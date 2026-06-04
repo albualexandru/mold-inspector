@@ -2,6 +2,31 @@ const { randomUUID } = require('node:crypto')
 
 const nowIso = () => new Date().toISOString()
 
+const emptyQuestionnaire = () => ({
+  clientName: '',
+  currentAddress: '',
+  contactPhoneNumber: '',
+  emailAddress: '',
+  propertyAddress: '',
+  activeWaterPenetration: '',
+  activeWaterPenetrationDetails: '',
+  priorMoistureWaterProblems: '',
+  priorMoistureWaterProblemsDetails: '',
+  activePlumbingLeaks: '',
+  activePlumbingLeaksLocation: '',
+  repairedPlumbingLeaks: '',
+  repairedPlumbingLeaksDetails: '',
+  mustyOdorAreas: '',
+  mustyOdorAreasWhere: '',
+  apparentMoldGrowth: '',
+  apparentMoldGrowthDescription: '',
+  previouslyInspectedOrTested: '',
+  previouslyInspectedOrTestedDetails: '',
+  occupantHealthAffected: '',
+  occupantsUnderPhysicianCare: '',
+  moldLitigation: '',
+})
+
 function createInMemoryStore() {
   const inspections = new Map()
 
@@ -21,10 +46,7 @@ function createInMemoryStore() {
         notes: input.notes ?? '',
       },
       clientForm: {
-        clientName: '',
-        clientEmail: '',
-        clientPhone: '',
-        concerns: '',
+        questionnaire: emptyQuestionnaire(),
         submittedAt: null,
       },
       rooms: [],
@@ -65,7 +87,11 @@ function createInMemoryStore() {
 
     inspection.clientForm = {
       ...inspection.clientForm,
-      ...patch,
+      questionnaire: {
+        ...emptyQuestionnaire(),
+        ...(inspection.clientForm.questionnaire || {}),
+        ...(patch.questionnaire || {}),
+      },
       submittedAt: nowIso(),
     }
     inspection.updatedAt = nowIso()

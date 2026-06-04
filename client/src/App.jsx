@@ -1,11 +1,29 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 
-const emptyClientForm = {
+const emptyQuestionnaire = {
   clientName: '',
-  clientEmail: '',
-  clientPhone: '',
-  concerns: '',
+  currentAddress: '',
+  contactPhoneNumber: '',
+  emailAddress: '',
+  propertyAddress: '',
+  activeWaterPenetration: '',
+  activeWaterPenetrationDetails: '',
+  priorMoistureWaterProblems: '',
+  priorMoistureWaterProblemsDetails: '',
+  activePlumbingLeaks: '',
+  activePlumbingLeaksLocation: '',
+  repairedPlumbingLeaks: '',
+  repairedPlumbingLeaksDetails: '',
+  mustyOdorAreas: '',
+  mustyOdorAreasWhere: '',
+  apparentMoldGrowth: '',
+  apparentMoldGrowthDescription: '',
+  previouslyInspectedOrTested: '',
+  previouslyInspectedOrTestedDetails: '',
+  occupantHealthAffected: '',
+  occupantsUnderPhysicianCare: '',
+  moldLitigation: '',
 }
 
 const emptyDetails = {
@@ -28,7 +46,7 @@ function App() {
 
 function PublicFormPage() {
   const publicId = window.location.pathname.split('/')[2]
-  const [form, setForm] = useState(emptyClientForm)
+  const [form, setForm] = useState(emptyQuestionnaire)
   const [address, setAddress] = useState('')
   const [status, setStatus] = useState('')
 
@@ -37,7 +55,7 @@ function PublicFormPage() {
       .then((response) => response.json())
       .then((payload) => {
         setAddress(payload.address || '')
-        setForm({ ...emptyClientForm, ...(payload.clientForm || {}) })
+        setForm({ ...emptyQuestionnaire, ...((payload.clientForm || {}).questionnaire || {}) })
       })
       .catch(() => setStatus('Could not load form.'))
   }, [publicId])
@@ -48,7 +66,7 @@ function PublicFormPage() {
     const response = await fetch(`/api/public/${publicId}/form`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ questionnaire: form }),
     })
 
     setStatus(response.ok ? 'Form saved.' : 'Failed to save form.')
@@ -56,27 +74,170 @@ function PublicFormPage() {
 
   return (
     <main className="app-shell">
-      <h1>Client Intake Form</h1>
+      <h1>Pre-Inspection Mold Questionnaire</h1>
       <p>Inspection address: {address || 'Not provided yet'}</p>
       <form onSubmit={onSubmit} className="panel form-grid">
+        <h2>Client and Property Information</h2>
         <label>
-          Name
+          Client Name
           <input value={form.clientName} onChange={(event) => setForm({ ...form, clientName: event.target.value })} />
         </label>
         <label>
-          Email
-          <input value={form.clientEmail} onChange={(event) => setForm({ ...form, clientEmail: event.target.value })} />
+          Current Address
+          <input
+            value={form.currentAddress}
+            onChange={(event) => setForm({ ...form, currentAddress: event.target.value })}
+          />
         </label>
         <label>
-          Phone
-          <input value={form.clientPhone} onChange={(event) => setForm({ ...form, clientPhone: event.target.value })} />
+          Contact Phone Number
+          <input
+            value={form.contactPhoneNumber}
+            onChange={(event) => setForm({ ...form, contactPhoneNumber: event.target.value })}
+          />
         </label>
         <label>
-          Concerns
+          Email Address
+          <input
+            value={form.emailAddress}
+            onChange={(event) => setForm({ ...form, emailAddress: event.target.value })}
+          />
+        </label>
+        <label>
+          Property Address (where the inspection will be performed)
+          <input
+            value={form.propertyAddress}
+            onChange={(event) => setForm({ ...form, propertyAddress: event.target.value })}
+          />
+        </label>
+
+        <h2>Building History and Current Conditions</h2>
+        <label>
+          Are you aware of any active water penetration/intrusion in the building? (Yes/No)
+          <input
+            value={form.activeWaterPenetration}
+            onChange={(event) => setForm({ ...form, activeWaterPenetration: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please explain
           <textarea
-            rows="4"
-            value={form.concerns}
-            onChange={(event) => setForm({ ...form, concerns: event.target.value })}
+            rows="2"
+            value={form.activeWaterPenetrationDetails}
+            onChange={(event) => setForm({ ...form, activeWaterPenetrationDetails: event.target.value })}
+          />
+        </label>
+        <label>
+          Have there ever been any prior experiences with moisture or water problems in the building? (Yes/No)
+          <input
+            value={form.priorMoistureWaterProblems}
+            onChange={(event) => setForm({ ...form, priorMoistureWaterProblems: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please explain
+          <textarea
+            rows="2"
+            value={form.priorMoistureWaterProblemsDetails}
+            onChange={(event) => setForm({ ...form, priorMoistureWaterProblemsDetails: event.target.value })}
+          />
+        </label>
+        <label>
+          Are there any active plumbing leaks? (Yes/No)
+          <input
+            value={form.activePlumbingLeaks}
+            onChange={(event) => setForm({ ...form, activePlumbingLeaks: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please specify location
+          <textarea
+            rows="2"
+            value={form.activePlumbingLeaksLocation}
+            onChange={(event) => setForm({ ...form, activePlumbingLeaksLocation: event.target.value })}
+          />
+        </label>
+        <label>
+          Have there been any plumbing leaks that have been repaired? (Yes/No)
+          <input
+            value={form.repairedPlumbingLeaks}
+            onChange={(event) => setForm({ ...form, repairedPlumbingLeaks: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please specify when and where
+          <textarea
+            rows="2"
+            value={form.repairedPlumbingLeaksDetails}
+            onChange={(event) => setForm({ ...form, repairedPlumbingLeaksDetails: event.target.value })}
+          />
+        </label>
+        <label>
+          Are there any areas of the building that have a musty odor? (Yes/No)
+          <input
+            value={form.mustyOdorAreas}
+            onChange={(event) => setForm({ ...form, mustyOdorAreas: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please specify where
+          <textarea
+            rows="2"
+            value={form.mustyOdorAreasWhere}
+            onChange={(event) => setForm({ ...form, mustyOdorAreasWhere: event.target.value })}
+          />
+        </label>
+        <label>
+          Are you aware of any apparent mold growth (or mold) in the building? (Yes/No)
+          <input
+            value={form.apparentMoldGrowth}
+            onChange={(event) => setForm({ ...form, apparentMoldGrowth: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please describe
+          <textarea
+            rows="2"
+            value={form.apparentMoldGrowthDescription}
+            onChange={(event) => setForm({ ...form, apparentMoldGrowthDescription: event.target.value })}
+          />
+        </label>
+        <label>
+          Has the property ever been inspected or tested for mold growth (or mold)? (Yes/No)
+          <input
+            value={form.previouslyInspectedOrTested}
+            onChange={(event) => setForm({ ...form, previouslyInspectedOrTested: event.target.value })}
+          />
+        </label>
+        <label>
+          If yes, please provide details or a copy of the report
+          <textarea
+            rows="2"
+            value={form.previouslyInspectedOrTestedDetails}
+            onChange={(event) => setForm({ ...form, previouslyInspectedOrTestedDetails: event.target.value })}
+          />
+        </label>
+
+        <h2>Occupant Health and Legal Considerations</h2>
+        <label>
+          Are any occupants experiencing or ever experienced health effects from asthma, allergies, breathing problems, or mold exposure? (Yes/No)
+          <input
+            value={form.occupantHealthAffected}
+            onChange={(event) => setForm({ ...form, occupantHealthAffected: event.target.value })}
+          />
+        </label>
+        <label>
+          Are any occupants under a physician’s care for significant health effects attributed to mold exposure? (Yes/No)
+          <input
+            value={form.occupantsUnderPhysicianCare}
+            onChange={(event) => setForm({ ...form, occupantsUnderPhysicianCare: event.target.value })}
+          />
+        </label>
+        <label>
+          Is there any litigation in progress or being considered in relation to mold in the building? (Yes/No)
+          <input
+            value={form.moldLitigation}
+            onChange={(event) => setForm({ ...form, moldLitigation: event.target.value })}
           />
         </label>
         <button type="submit">Save</button>
@@ -334,7 +495,11 @@ function PrivateDashboard() {
               </form>
 
               <h3>Client response</h3>
-              <p>{selectedInspection.clientForm.concerns || 'No response yet.'}</p>
+              <textarea
+                readOnly
+                rows="12"
+                value={JSON.stringify(selectedInspection.clientForm.questionnaire || {}, null, 2)}
+              />
 
               <h3>Rooms</h3>
               <form className="form-grid" onSubmit={addRoom}>

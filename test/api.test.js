@@ -39,7 +39,32 @@ test('auth + inspection + public form flow', async (t) => {
 
   await request(app)
     .put(`/api/public/${inspection.publicId}/form`)
-    .send({ concerns: 'Possible mold in bathroom.' })
+    .send({
+      questionnaire: {
+        clientName: 'Jane Doe',
+        currentAddress: '12 Main St',
+        contactPhoneNumber: '+1-555-0100',
+        emailAddress: 'jane@example.com',
+        propertyAddress: '42 Sample Street',
+        activeWaterPenetration: 'Yes',
+        activeWaterPenetrationDetails: 'Basement wall seepage',
+        priorMoistureWaterProblems: 'No',
+        priorMoistureWaterProblemsDetails: '',
+        activePlumbingLeaks: 'Yes',
+        activePlumbingLeaksLocation: 'Kitchen sink',
+        repairedPlumbingLeaks: 'Yes',
+        repairedPlumbingLeaksDetails: 'Bathroom pipe, 2025',
+        mustyOdorAreas: 'Yes',
+        mustyOdorAreasWhere: 'Laundry room',
+        apparentMoldGrowth: 'Yes',
+        apparentMoldGrowthDescription: 'Around shower grout',
+        previouslyInspectedOrTested: 'No',
+        previouslyInspectedOrTestedDetails: '',
+        occupantHealthAffected: 'No',
+        occupantsUnderPhysicianCare: 'No',
+        moldLitigation: 'No',
+      },
+    })
     .expect(200)
 
   const report = await request(app)
@@ -48,7 +73,9 @@ test('auth + inspection + public form flow', async (t) => {
     .expect(200)
 
   assert.match(report.text, /Mold Inspection Report/)
-  assert.match(report.text, /Possible mold in bathroom/)
+  assert.match(report.text, /Client Intake Questionnaire \(JSON\)/)
+  assert.match(report.text, /Jane Doe/)
+  assert.match(report.text, /Basement wall seepage/)
 
   await t.test('requires auth on private routes', async () => {
     await request(app).get('/api/inspections').expect(401)
