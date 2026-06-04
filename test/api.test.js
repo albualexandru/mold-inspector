@@ -37,7 +37,7 @@ test('auth + inspection + public form flow', async (t) => {
     .send({ contactEmail: 'client@example.com' })
     .expect(200)
 
-  await request(app)
+  const publicFormResponse = await request(app)
     .put(`/api/public/${inspection.publicId}/form`)
     .send({
       questionnaire: {
@@ -67,13 +67,24 @@ test('auth + inspection + public form flow', async (t) => {
     })
     .expect(200)
 
+  assert.equal(
+    publicFormResponse.body.clientForm.questionnaire['Client Name'],
+    'Jane Doe',
+  )
+  assert.equal(
+    publicFormResponse.body.clientForm.questionnaire[
+      'If yes, please explain active water penetration/intrusion details'
+    ],
+    'Basement wall seepage',
+  )
+
   const report = await request(app)
     .get(`/api/inspections/${inspection.id}/report/html`)
     .set('Authorization', 'Token ' + token)
     .expect(200)
 
   assert.match(report.text, /Mold Inspection Report/)
-  assert.match(report.text, /Client Intake Questionnaire \(JSON\)/)
+  assert.match(report.text, /Client Intake Questionnaire/)
   assert.match(report.text, /Jane Doe/)
   assert.match(report.text, /Basement wall seepage/)
 
