@@ -220,7 +220,7 @@ function PublicFormPage() {
 
         <h2>Occupant Health and Legal Considerations</h2>
         <label>
-          Are any occupants experiencing or ever experienced health effects from asthma, allergies, breathing problems, or mold exposure? (Yes/No)
+          Are any occupants experiencing or have ever experienced health effects from asthma, allergies, breathing problems, or mold exposure? (Yes/No)
           <input
             value={form.occupantHealthAffected}
             onChange={(event) => setForm({ ...form, occupantHealthAffected: event.target.value })}
