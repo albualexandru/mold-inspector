@@ -3,6 +3,7 @@ const path = require('node:path')
 const express = require('express')
 const cors = require('cors')
 const multer = require('multer')
+const rateLimit = require('express-rate-limit')
 const { createInMemoryStore } = require('./store')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -28,6 +29,20 @@ function createApp(options = {}) {
   app.use(cors())
   app.use(express.json({ limit: '2mb' }))
 
+  const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+
+  const pageLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  })
+
   const requireAuth = (req, res, next) => {
     const header = req.get('authorization') || ''
     const [scheme, token] = header.split(' ')
@@ -39,7 +54,7 @@ function createApp(options = {}) {
     return next()
   }
 
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', authLimiter, (req, res) => {
     const { username, password } = req.body || {}
 
     if (username !== authUsername || password !== authPassword) {
@@ -164,7 +179,7 @@ function createApp(options = {}) {
   const clientDistPath = path.resolve(process.cwd(), 'client', 'dist')
   app.use(express.static(clientDistPath))
 
-  app.get(/^\/(?!api\/).*/, (req, res) => {
+  app.get(/^\/(?!api\/).*/, pageLimiter, (req, res) => {
     return res.sendFile(path.join(clientDistPath, 'index.html'), (error) => {
       if (error) {
         res.status(404).json({ error: 'Frontend build not found. Run npm run build first.' })
