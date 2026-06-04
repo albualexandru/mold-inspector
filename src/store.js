@@ -1,31 +1,9 @@
 const { randomUUID } = require('node:crypto')
+const { normalizeQuestionnaire } = require('./questionnaire')
 
 const nowIso = () => new Date().toISOString()
 
-const emptyQuestionnaire = () => ({
-  clientName: '',
-  currentAddress: '',
-  contactPhoneNumber: '',
-  emailAddress: '',
-  propertyAddress: '',
-  activeWaterPenetration: '',
-  activeWaterPenetrationDetails: '',
-  priorMoistureWaterProblems: '',
-  priorMoistureWaterProblemsDetails: '',
-  activePlumbingLeaks: '',
-  activePlumbingLeaksLocation: '',
-  repairedPlumbingLeaks: '',
-  repairedPlumbingLeaksDetails: '',
-  mustyOdorAreas: '',
-  mustyOdorAreasWhere: '',
-  apparentMoldGrowth: '',
-  apparentMoldGrowthDescription: '',
-  previouslyInspectedOrTested: '',
-  previouslyInspectedOrTestedDetails: '',
-  occupantHealthAffected: '',
-  occupantsUnderPhysicianCare: '',
-  moldLitigation: '',
-})
+const emptyQuestionnaire = () => normalizeQuestionnaire({})
 
 function createInMemoryStore() {
   const inspections = new Map()
@@ -85,13 +63,14 @@ function createInMemoryStore() {
     const inspection = getInspectionByPublicId(publicId)
     if (!inspection) return null
 
+    const mergedQuestionnaire = {
+      ...(inspection.clientForm.questionnaire || {}),
+      ...(patch.questionnaire || {}),
+    }
+
     inspection.clientForm = {
       ...inspection.clientForm,
-      questionnaire: {
-        ...emptyQuestionnaire(),
-        ...(inspection.clientForm.questionnaire || {}),
-        ...(patch.questionnaire || {}),
-      },
+      questionnaire: normalizeQuestionnaire(mergedQuestionnaire),
       submittedAt: nowIso(),
     }
     inspection.updatedAt = nowIso()

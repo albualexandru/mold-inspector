@@ -5,6 +5,7 @@ const cors = require('cors')
 const multer = require('multer')
 const rateLimit = require('express-rate-limit')
 const { createInMemoryStore } = require('./store')
+const { questionnaireToEntries } = require('./questionnaire')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
 
@@ -150,7 +151,17 @@ function createApp(options = {}) {
         </article>`,
       )
       .join('')
-    const questionnaireBlock = escapeHtml(JSON.stringify(inspection.clientForm.questionnaire || {}, null, 2))
+    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(({ answer }) =>
+      answer.trim(),
+    )
+    const questionnaireBlock = questionnaireEntries.length
+      ? `<ul>${questionnaireEntries
+          .map(
+            ({ question, answer }) =>
+              `<li><strong>${escapeHtml(question)}:</strong> ${escapeHtml(answer)}</li>`,
+          )
+          .join('')}</ul>`
+      : '<p>No client responses submitted.</p>'
 
     const html = `<!DOCTYPE html>
 <html>
@@ -167,8 +178,8 @@ function createApp(options = {}) {
     <h1>Mold Inspection Report</h1>
     <p><strong>Address:</strong> ${escapeHtml(inspection.details.address)}</p>
     <p><strong>Contact:</strong> ${escapeHtml(inspection.details.contactName)} (${escapeHtml(inspection.details.contactEmail)})</p>
-    <h2>Client Intake Questionnaire (JSON)</h2>
-    <pre>${questionnaireBlock}</pre>
+    <h2>Client Intake Questionnaire</h2>
+    ${questionnaireBlock}
     <h2>Rooms</h2>
     ${roomSections || '<p>No rooms added.</p>'}
   </body>

@@ -74,6 +74,20 @@ button {
   padding: 8px;
 }
 
+.questionnaire-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.questionnaire-item dt {
+  font-weight: 600;
+}
+
+.questionnaire-item dd {
+  margin: 4px 0 0;
+}
+
 @media (max-width: 860px) {
   .layout-grid {
     grid-template-columns: 1fr;
