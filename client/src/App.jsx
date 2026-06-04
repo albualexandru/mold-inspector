@@ -120,8 +120,8 @@ const normalizeAnswer = (value) => {
 
 const readQuestionnaireAnswer = (questionnaire, definition) => {
   if (!questionnaire || typeof questionnaire !== 'object') return ''
-  if (Object.hasOwn(questionnaire, definition.question)) return normalizeAnswer(questionnaire[definition.question])
   if (Object.hasOwn(questionnaire, definition.key)) return normalizeAnswer(questionnaire[definition.key])
+  if (Object.hasOwn(questionnaire, definition.question)) return normalizeAnswer(questionnaire[definition.question])
   return ''
 }
 
@@ -594,8 +594,8 @@ function PrivateDashboard() {
 
   const clientResponseEntries = useMemo(() => {
     if (!selectedInspection) return []
-    return questionnaireToEntries((selectedInspection.clientForm || {}).questionnaire || {}).filter(({ answer }) =>
-      answer.trim(),
+    return questionnaireToEntries((selectedInspection.clientForm || {}).questionnaire || {}).filter(
+      ({ answer }) => typeof answer === 'string' && answer.trim(),
     )
   }, [selectedInspection])
 
@@ -731,7 +731,7 @@ function PrivateDashboard() {
                       Room notes
                       <textarea
                         rows="3"
-                        value={roomNotesDrafts[room.id] ?? ''}
+                        value={roomNotesDrafts[room.id] || ''}
                         onChange={(event) =>
                           setRoomNotesDrafts((currentDrafts) => ({
                             ...currentDrafts,

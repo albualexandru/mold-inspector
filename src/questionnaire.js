@@ -64,8 +64,8 @@ const normalizeAnswer = (value) => {
 
 const readAnswer = (questionnaire, definition) => {
   if (!questionnaire || typeof questionnaire !== 'object') return ''
-  if (Object.hasOwn(questionnaire, definition.question)) return normalizeAnswer(questionnaire[definition.question])
   if (Object.hasOwn(questionnaire, definition.key)) return normalizeAnswer(questionnaire[definition.key])
+  if (Object.hasOwn(questionnaire, definition.question)) return normalizeAnswer(questionnaire[definition.question])
   return ''
 }
 

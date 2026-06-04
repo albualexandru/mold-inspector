@@ -151,8 +151,8 @@ function createApp(options = {}) {
         </article>`,
       )
       .join('')
-    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(({ answer }) =>
-      answer.trim(),
+    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(
+      ({ answer }) => typeof answer === 'string' && answer.trim(),
     )
     const questionnaireBlock = questionnaireEntries.length
       ? `<ul>${questionnaireEntries
