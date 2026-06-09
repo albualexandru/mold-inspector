@@ -8,7 +8,7 @@ const emptyQuestionnaire = () => normalizeQuestionnaire({})
 function createInMemoryStore() {
   const inspections = new Map()
 
-  const createInspection = (input = {}) => {
+  const createInspection = async (input = {}) => {
     const id = randomUUID()
     const timestamp = nowIso()
     const inspection = {
@@ -34,11 +34,11 @@ function createInMemoryStore() {
     return inspection
   }
 
-  const listInspections = () => Array.from(inspections.values())
+  const listInspections = async () => Array.from(inspections.values())
 
-  const getInspection = (id) => inspections.get(id) || null
+  const getInspection = async (id) => inspections.get(id) || null
 
-  const getInspectionByPublicId = (publicId) => {
+  const getInspectionByPublicId = async (publicId) => {
     for (const inspection of inspections.values()) {
       if (inspection.publicId === publicId) return inspection
     }
@@ -46,8 +46,8 @@ function createInMemoryStore() {
     return null
   }
 
-  const updateInspectionDetails = (id, patch = {}) => {
-    const inspection = getInspection(id)
+  const updateInspectionDetails = async (id, patch = {}) => {
+    const inspection = await getInspection(id)
     if (!inspection) return null
 
     inspection.details = {
@@ -59,8 +59,8 @@ function createInMemoryStore() {
     return inspection
   }
 
-  const updateClientFormByPublicId = (publicId, patch = {}) => {
-    const inspection = getInspectionByPublicId(publicId)
+  const updateClientFormByPublicId = async (publicId, patch = {}) => {
+    const inspection = await getInspectionByPublicId(publicId)
     if (!inspection) return null
 
     const mergedQuestionnaire = {
@@ -78,8 +78,8 @@ function createInMemoryStore() {
     return inspection
   }
 
-  const createRoom = (inspectionId, input = {}) => {
-    const inspection = getInspection(inspectionId)
+  const createRoom = async (inspectionId, input = {}) => {
+    const inspection = await getInspection(inspectionId)
     if (!inspection) return null
 
     const room = {
@@ -96,8 +96,8 @@ function createInMemoryStore() {
     return room
   }
 
-  const updateRoom = (inspectionId, roomId, patch = {}) => {
-    const inspection = getInspection(inspectionId)
+  const updateRoom = async (inspectionId, roomId, patch = {}) => {
+    const inspection = await getInspection(inspectionId)
     if (!inspection) return null
 
     const room = inspection.rooms.find((candidate) => candidate.id === roomId)
@@ -109,8 +109,8 @@ function createInMemoryStore() {
     return room
   }
 
-  const addFileToRoom = (inspectionId, roomId, file) => {
-    const inspection = getInspection(inspectionId)
+  const addFileToRoom = async (inspectionId, roomId, file) => {
+    const inspection = await getInspection(inspectionId)
     if (!inspection) return null
 
     const room = inspection.rooms.find((candidate) => candidate.id === roomId)
@@ -131,6 +131,24 @@ function createInMemoryStore() {
     return fileRecord
   }
 
+  const deleteInspection = async (id) => {
+    if (!inspections.has(id)) return false
+    inspections.delete(id)
+    return true
+  }
+
+  const deleteRoom = async (inspectionId, roomId) => {
+    const inspection = await getInspection(inspectionId)
+    if (!inspection) return false
+
+    const index = inspection.rooms.findIndex((room) => room.id === roomId)
+    if (index === -1) return false
+
+    inspection.rooms.splice(index, 1)
+    inspection.updatedAt = nowIso()
+    return true
+  }
+
   return {
     createInspection,
     listInspections,
@@ -141,6 +159,8 @@ function createInMemoryStore() {
     createRoom,
     updateRoom,
     addFileToRoom,
+    deleteInspection,
+    deleteRoom,
   }
 }
 
