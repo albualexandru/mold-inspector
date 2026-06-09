@@ -106,7 +106,8 @@ test('auth + inspection + public form flow', async (t) => {
     .expect(401)
 
   const report = await request(app)
-    .get(`/api/inspections/${inspection.id}/report/html?token=${encodeURIComponent(token)}`)
+    .get(`/api/inspections/${inspection.id}/report/html`)
+    .set('Authorization', 'Token ' + token)
     .expect(200)
 
   assert.match(report.text, /Mold Inspection Report/)

@@ -5,6 +5,11 @@ const { normalizeQuestionnaire } = require('./questionnaire')
 const nowIso = () => new Date().toISOString()
 const emptyQuestionnaire = () => normalizeQuestionnaire({})
 const emptyClientForm = () => ({ questionnaire: emptyQuestionnaire(), submittedAt: null, files: [] })
+const ensureFilesArray = (clientForm = {}) => ({
+  ...emptyClientForm(),
+  ...clientForm,
+  files: Array.isArray(clientForm.files) ? clientForm.files : [],
+})
 
 function createDbStore(connectionString) {
   const isLocal =
@@ -94,11 +99,7 @@ function createDbStore(connectionString) {
       contactPhone: row.contact_phone,
       notes: row.notes,
     },
-    clientForm: {
-      ...emptyClientForm(),
-      ...(row.client_form || {}),
-      files: Array.isArray((row.client_form || {}).files) ? row.client_form.files : [],
-    },
+    clientForm: ensureFilesArray(row.client_form || {}),
     rooms,
   })
 
@@ -198,11 +199,7 @@ function createDbStore(connectionString) {
     if (!rows.length) return null
 
     const current = rows[0]
-    const currentClientForm = {
-      ...emptyClientForm(),
-      ...(current.client_form || {}),
-      files: Array.isArray((current.client_form || {}).files) ? current.client_form.files : [],
-    }
+    const currentClientForm = ensureFilesArray(current.client_form || {})
 
     const mergedQuestionnaire = {
       ...(currentClientForm.questionnaire || {}),
@@ -212,7 +209,7 @@ function createDbStore(connectionString) {
     const updatedClientForm = {
       ...currentClientForm,
       questionnaire: normalizeQuestionnaire(mergedQuestionnaire),
-      files: Array.isArray(currentClientForm.files) ? currentClientForm.files : [],
+      files: currentClientForm.files,
       submittedAt: nowIso(),
     }
 
@@ -229,11 +226,7 @@ function createDbStore(connectionString) {
     if (!rows.length) return null
 
     const current = rows[0]
-    const currentClientForm = {
-      ...emptyClientForm(),
-      ...(current.client_form || {}),
-      files: Array.isArray((current.client_form || {}).files) ? current.client_form.files : [],
-    }
+    const currentClientForm = ensureFilesArray(current.client_form || {})
     const timestamp = nowIso()
     const preparedFiles = files.map((file) => ({
       id: randomUUID(),

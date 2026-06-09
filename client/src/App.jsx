@@ -113,6 +113,7 @@ const emptyDetails = {
   notes: '',
 }
 const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+const MAX_CLIENT_FORM_FILES = 20
 
 const normalizeAnswer = (value) => {
   if (value === undefined || value === null) return ''
@@ -232,6 +233,11 @@ function PublicFormPage() {
     if (!files.length) return
     if (files.some((file) => file.size > MAX_UPLOAD_SIZE_BYTES)) {
       setStatus('Each uploaded image must be 10MB or smaller.')
+      event.target.value = ''
+      return
+    }
+    if (uploadedFiles.length + files.length > MAX_CLIENT_FORM_FILES) {
+      setStatus(`A maximum of ${MAX_CLIENT_FORM_FILES} images can be uploaded.`)
       event.target.value = ''
       return
     }
@@ -411,7 +417,13 @@ function PublicFormPage() {
         </label>
         <label>
           Upload images (max 10MB each)
-          <input type="file" accept="image/*" multiple onChange={uploadFiles} />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={uploadFiles}
+            aria-label="Upload questionnaire images, maximum 10MB each"
+          />
         </label>
         {uploadedFiles.length > 0 && (
           <div className="file-list">
@@ -675,11 +687,25 @@ function PrivateDashboard() {
     () => readClientFormFiles((selectedInspection || {}).clientForm).filter((file) => file.mimeType?.startsWith('image/')),
     [selectedInspection],
   )
-  const reportUrl = useMemo(() => {
-    if (!selectedInspection || !token) return ''
-    const encodedToken = encodeURIComponent(token)
-    return `/api/inspections/${selectedInspection.id}/report/html?token=${encodedToken}`
-  }, [selectedInspection, token])
+  const openHtmlReport = async () => {
+    if (!selectedInspection) return
+
+    const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/report/html`)
+    if (!response.ok) {
+      setStatus('Failed to load HTML report.')
+      return
+    }
+
+    const html = await response.text()
+    const reportWindow = window.open('', '_blank', 'noopener')
+    if (!reportWindow) {
+      setStatus('Popup blocked. Please allow popups to view the report.')
+      return
+    }
+    reportWindow.document.open()
+    reportWindow.document.write(html)
+    reportWindow.document.close()
+  }
 
   if (!token) {
     return (
@@ -894,10 +920,10 @@ function PrivateDashboard() {
                 ))}
               </ul>
 
-              {reportUrl ? (
-                <a href={reportUrl} target="_blank" rel="noreferrer" className="report-link">
-                  Generate HTML report
-                </a>
+              {selectedInspection ? (
+                <button type="button" onClick={openHtmlReport} className="report-link">
+                  Open HTML report
+                </button>
               ) : null}
             </>
           ) : (
