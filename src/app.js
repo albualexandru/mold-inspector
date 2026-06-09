@@ -18,6 +18,24 @@ const escapeHtml = (value = '') =>
     .replaceAll("'", '&#39;')
 
 const requiredEnv = (name, fallback) => process.env[name] || fallback
+const MAX_CLIENT_FORM_FILES = 20
+
+const buildFileHtml = (file) => {
+  const name = escapeHtml(file.name || '')
+  const mimeType = file.mimeType || 'application/octet-stream'
+  const source = `data:${mimeType};base64,${file.contentBase64 || ''}`
+
+  if (mimeType.startsWith('image/')) {
+    return `<figure class="file-item">
+      <img src="${source}" alt="${name}" />
+      <figcaption>${name}</figcaption>
+    </figure>`
+  }
+
+  return `<div class="file-item">
+    <a href="${source}" download="${name}">${name}</a>
+  </div>`
+}
 
 function createApp(options = {}) {
   const app = express()
@@ -55,6 +73,15 @@ function createApp(options = {}) {
     return next()
   }
 
+  const requestHasValidSession = (req) => {
+    const header = req.get('authorization') || ''
+    const [scheme, token] = header.split(' ')
+    if ((scheme === 'Bearer' || scheme === 'Token') && token && sessions.has(token)) return true
+
+    const queryToken = typeof req.query.token === 'string' ? req.query.token : ''
+    return !!queryToken && sessions.has(queryToken)
+  }
+
   app.post('/api/auth/login', authLimiter, (req, res) => {
     const { username, password } = req.body || {}
 
@@ -85,6 +112,92 @@ function createApp(options = {}) {
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.json({ clientForm: inspection.clientForm })
+  })
+
+  app.post('/api/public/:publicId/form/files', upload.array('files', MAX_CLIENT_FORM_FILES), async (req, res) => {
+    const files = Array.isArray(req.files) ? req.files : []
+    if (!files.length) return res.status(400).json({ error: 'At least one image is required' })
+    if (files.some((file) => !file.mimetype || !file.mimetype.startsWith('image/'))) {
+      return res.status(400).json({ error: 'Only image uploads are allowed' })
+    }
+
+    const inspection = await store.addClientFormFilesByPublicId(req.params.publicId, files)
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
+
+    return res.status(201).json({ clientForm: inspection.clientForm })
+  })
+
+  app.get('/api/inspections/:inspectionId/report/html', async (req, res) => {
+    if (!requestHasValidSession(req)) return res.status(401).json({ error: 'Unauthorized' })
+
+    const inspection = await store.getInspection(req.params.inspectionId)
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
+
+    const roomSections = inspection.rooms
+      .map((room) => {
+        const files = Array.isArray(room.files) ? room.files : []
+        const fileBlock = files.length
+          ? `<div class="file-grid">${files.map((file) => buildFileHtml(file)).join('')}</div>`
+          : '<p>No room files uploaded.</p>'
+
+        return `<article>
+          <h3>${escapeHtml(room.name)}</h3>
+          <p><strong>Location:</strong> ${escapeHtml(room.location)}</p>
+          <p><strong>Notes:</strong> ${escapeHtml(room.notes)}</p>
+          <p><strong>Findings:</strong> ${escapeHtml(room.findings)}</p>
+          <h4>Room Files</h4>
+          ${fileBlock}
+        </article>`
+      })
+      .join('')
+    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(
+      ({ answer }) => typeof answer === 'string' && answer.trim(),
+    )
+    const questionnaireBlock = questionnaireEntries.length
+      ? `<ul>${questionnaireEntries
+          .map(
+            ({ question, answer }) =>
+              `<li><strong>${escapeHtml(question)}:</strong> ${escapeHtml(answer)}</li>`,
+          )
+          .join('')}</ul>`
+      : '<p>No client responses submitted.</p>'
+    const clientFormFiles = Array.isArray((inspection.clientForm || {}).files) ? inspection.clientForm.files : []
+    const clientFilesBlock = clientFormFiles.length
+      ? `<div class="file-grid">${clientFormFiles.map((file) => buildFileHtml(file)).join('')}</div>`
+      : '<p>No client images uploaded.</p>'
+
+    const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Mold Inspection Report</title>
+    <style>
+      body { font-family: Arial, sans-serif; margin: 24px; }
+      h1, h2 { margin-bottom: 0; }
+      article { border-top: 1px solid #ccc; padding-top: 12px; margin-top: 12px; }
+      .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+      .file-item img { max-width: 220px; max-height: 160px; border-radius: 4px; border: 1px solid #d1d5db; object-fit: cover; }
+      .file-item figcaption { margin-top: 4px; font-size: 12px; color: #4b5563; word-break: break-word; }
+      .file-item a { display: inline-block; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; text-decoration: none; color: #1d4ed8; }
+    </style>
+  </head>
+  <body>
+    <h1>Mold Inspection Report</h1>
+    <p><strong>Address:</strong> ${escapeHtml(inspection.details.address)}</p>
+    <p><strong>Contact name:</strong> ${escapeHtml(inspection.details.contactName)}</p>
+    <p><strong>Contact email:</strong> ${escapeHtml(inspection.details.contactEmail)}</p>
+    <p><strong>Contact phone:</strong> ${escapeHtml(inspection.details.contactPhone)}</p>
+    <p><strong>Inspection notes:</strong> ${escapeHtml(inspection.details.notes)}</p>
+    <h2>Client Intake Questionnaire</h2>
+    ${questionnaireBlock}
+    <h2>Client Uploaded Images</h2>
+    ${clientFilesBlock}
+    <h2>Rooms</h2>
+    ${roomSections || '<p>No rooms added.</p>'}
+  </body>
+</html>`
+
+    res.type('html').send(html)
   })
 
   app.use('/api/inspections', requireAuth)
@@ -150,56 +263,11 @@ function createApp(options = {}) {
     return res.status(201).json({ file })
   })
 
-  app.get('/api/inspections/:inspectionId/report/html', async (req, res) => {
-    const inspection = await store.getInspection(req.params.inspectionId)
-    if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
-
-    const roomSections = inspection.rooms
-      .map(
-        (room) => `<article>
-          <h3>${escapeHtml(room.name)}</h3>
-          <p><strong>Location:</strong> ${escapeHtml(room.location)}</p>
-          <p><strong>Notes:</strong> ${escapeHtml(room.notes)}</p>
-          <p><strong>Findings:</strong> ${escapeHtml(room.findings)}</p>
-          <p><strong>Files:</strong> ${room.files.length}</p>
-        </article>`,
-      )
-      .join('')
-    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(
-      ({ answer }) => typeof answer === 'string' && answer.trim(),
-    )
-    const questionnaireBlock = questionnaireEntries.length
-      ? `<ul>${questionnaireEntries
-          .map(
-            ({ question, answer }) =>
-              `<li><strong>${escapeHtml(question)}:</strong> ${escapeHtml(answer)}</li>`,
-          )
-          .join('')}</ul>`
-      : '<p>No client responses submitted.</p>'
-
-    const html = `<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Mold Inspection Report</title>
-    <style>
-      body { font-family: Arial, sans-serif; margin: 24px; }
-      h1, h2 { margin-bottom: 0; }
-      article { border-top: 1px solid #ccc; padding-top: 12px; margin-top: 12px; }
-    </style>
-  </head>
-  <body>
-    <h1>Mold Inspection Report</h1>
-    <p><strong>Address:</strong> ${escapeHtml(inspection.details.address)}</p>
-    <p><strong>Contact:</strong> ${escapeHtml(inspection.details.contactName)} (${escapeHtml(inspection.details.contactEmail)})</p>
-    <h2>Client Intake Questionnaire</h2>
-    ${questionnaireBlock}
-    <h2>Rooms</h2>
-    ${roomSections || '<p>No rooms added.</p>'}
-  </body>
-</html>`
-
-    res.type('html').send(html)
+  app.use((error, req, res, next) => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Each uploaded file must be 10MB or smaller' })
+    }
+    return next(error)
   })
 
   const clientDistPath = path.resolve(process.cwd(), 'client', 'dist')
