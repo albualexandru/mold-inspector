@@ -582,6 +582,39 @@ function PrivateDashboard() {
     await selectInspection(selectedInspection.id)
   }
 
+  const deleteInspection = async (inspectionId) => {
+    const response = await authorizedFetch(`/api/inspections/${inspectionId}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) return
+
+    if (selectedInspection && selectedInspection.id === inspectionId) {
+      setSelectedInspection(null)
+      setDetailsDraft(emptyDetails)
+      setReportHtml('')
+    }
+    setStatus('Inspection deleted.')
+    await refreshInspections()
+  }
+
+  const deleteRoom = async (roomId) => {
+    if (!selectedInspection) return
+
+    const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/rooms/${roomId}`, {
+      method: 'DELETE',
+    })
+
+    if (!response.ok) {
+      setStatus('Failed to delete room.')
+      return
+    }
+
+    setStatus('Room deleted.')
+    await selectInspection(selectedInspection.id)
+    await refreshInspections()
+  }
+
   const generateReport = async () => {
     if (!selectedInspection) return
 
@@ -637,9 +670,17 @@ function PrivateDashboard() {
           <h2>Inspections</h2>
           <ul className="list">
             {inspections.map((inspection) => (
-              <li key={inspection.id}>
+              <li key={inspection.id} className="inspection-item">
                 <button type="button" onClick={() => selectInspection(inspection.id)}>
                   {inspection.details.address || inspection.id.slice(0, 8)}
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger btn-sm"
+                  onClick={() => deleteInspection(inspection.id)}
+                  title="Delete inspection"
+                >
+                  ✕
                 </button>
               </li>
             ))}
@@ -726,7 +767,17 @@ function PrivateDashboard() {
               <ul className="list">
                 {selectedInspection.rooms.map((room) => (
                   <li key={room.id} className="room-card">
-                    <strong>{room.name}</strong>
+                    <div className="room-card-header">
+                      <strong>{room.name}</strong>
+                      <button
+                        type="button"
+                        className="btn-danger btn-sm"
+                        onClick={() => deleteRoom(room.id)}
+                        title="Delete room"
+                      >
+                        ✕
+                      </button>
+                    </div>
                     <label>
                       Room notes
                       <textarea
@@ -744,8 +795,33 @@ function PrivateDashboard() {
                       Save room notes
                     </button>
                     <p>{room.files.length} file(s)</p>
+                    {room.files.length > 0 && (
+                      <div className="file-list">
+                        {room.files.map((file) => (
+                          <div key={file.id} className="file-item">
+                            {file.mimeType && file.mimeType.startsWith('image/') ? (
+                              <img
+                                src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                                alt={file.name}
+                                className="file-preview-image"
+                              />
+                            ) : (
+                              <a
+                                href={`data:${file.mimeType || 'application/octet-stream'};base64,${file.contentBase64}`}
+                                download={file.name}
+                                className="file-download-link"
+                              >
+                                📄 {file.name}
+                              </a>
+                            )}
+                            <span className="file-name">{file.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <input
                       type="file"
+                      accept="image/*,application/pdf"
                       onChange={(event) => uploadRoomFile(room.id, event.target.files?.[0])}
                     />
                   </li>

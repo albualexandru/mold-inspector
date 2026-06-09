@@ -68,8 +68,8 @@ function createApp(options = {}) {
     return res.json({ token })
   })
 
-  app.get('/api/public/:publicId/form', (req, res) => {
-    const inspection = store.getInspectionByPublicId(req.params.publicId)
+  app.get('/api/public/:publicId/form', async (req, res) => {
+    const inspection = await store.getInspectionByPublicId(req.params.publicId)
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.json({
@@ -80,8 +80,8 @@ function createApp(options = {}) {
     })
   })
 
-  app.put('/api/public/:publicId/form', (req, res) => {
-    const inspection = store.updateClientFormByPublicId(req.params.publicId, req.body || {})
+  app.put('/api/public/:publicId/form', async (req, res) => {
+    const inspection = await store.updateClientFormByPublicId(req.params.publicId, req.body || {})
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.json({ clientForm: inspection.clientForm })
@@ -89,55 +89,69 @@ function createApp(options = {}) {
 
   app.use('/api/inspections', requireAuth)
 
-  app.get('/api/inspections', (req, res) => {
-    const inspections = store.listInspections()
+  app.get('/api/inspections', async (req, res) => {
+    const inspections = await store.listInspections()
     res.json({ inspections })
   })
 
-  app.post('/api/inspections', (req, res) => {
-    const inspection = store.createInspection(req.body || {})
+  app.post('/api/inspections', async (req, res) => {
+    const inspection = await store.createInspection(req.body || {})
     res.status(201).json({ inspection })
   })
 
-  app.get('/api/inspections/:inspectionId', (req, res) => {
-    const inspection = store.getInspection(req.params.inspectionId)
+  app.get('/api/inspections/:inspectionId', async (req, res) => {
+    const inspection = await store.getInspection(req.params.inspectionId)
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.json({ inspection })
   })
 
-  app.put('/api/inspections/:inspectionId/details', (req, res) => {
-    const inspection = store.updateInspectionDetails(req.params.inspectionId, req.body || {})
+  app.delete('/api/inspections/:inspectionId', async (req, res) => {
+    const deleted = await store.deleteInspection(req.params.inspectionId)
+    if (!deleted) return res.status(404).json({ error: 'Inspection not found' })
+
+    return res.status(204).end()
+  })
+
+  app.put('/api/inspections/:inspectionId/details', async (req, res) => {
+    const inspection = await store.updateInspectionDetails(req.params.inspectionId, req.body || {})
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.json({ inspection })
   })
 
-  app.post('/api/inspections/:inspectionId/rooms', (req, res) => {
-    const room = store.createRoom(req.params.inspectionId, req.body || {})
+  app.post('/api/inspections/:inspectionId/rooms', async (req, res) => {
+    const room = await store.createRoom(req.params.inspectionId, req.body || {})
     if (!room) return res.status(404).json({ error: 'Inspection not found' })
 
     return res.status(201).json({ room })
   })
 
-  app.put('/api/inspections/:inspectionId/rooms/:roomId', (req, res) => {
-    const room = store.updateRoom(req.params.inspectionId, req.params.roomId, req.body || {})
+  app.put('/api/inspections/:inspectionId/rooms/:roomId', async (req, res) => {
+    const room = await store.updateRoom(req.params.inspectionId, req.params.roomId, req.body || {})
     if (!room) return res.status(404).json({ error: 'Room or inspection not found' })
 
     return res.json({ room })
   })
 
-  app.post('/api/inspections/:inspectionId/rooms/:roomId/files', upload.single('file'), (req, res) => {
+  app.delete('/api/inspections/:inspectionId/rooms/:roomId', async (req, res) => {
+    const deleted = await store.deleteRoom(req.params.inspectionId, req.params.roomId)
+    if (!deleted) return res.status(404).json({ error: 'Room or inspection not found' })
+
+    return res.status(204).end()
+  })
+
+  app.post('/api/inspections/:inspectionId/rooms/:roomId/files', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'File is required' })
 
-    const file = store.addFileToRoom(req.params.inspectionId, req.params.roomId, req.file)
+    const file = await store.addFileToRoom(req.params.inspectionId, req.params.roomId, req.file)
     if (!file) return res.status(404).json({ error: 'Room or inspection not found' })
 
     return res.status(201).json({ file })
   })
 
-  app.get('/api/inspections/:inspectionId/report/html', (req, res) => {
-    const inspection = store.getInspection(req.params.inspectionId)
+  app.get('/api/inspections/:inspectionId/report/html', async (req, res) => {
+    const inspection = await store.getInspection(req.params.inspectionId)
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     const roomSections = inspection.rooms
