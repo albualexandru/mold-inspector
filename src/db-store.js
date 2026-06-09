@@ -9,9 +9,19 @@ function createDbStore(connectionString) {
   const isLocal =
     connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
 
+  // For hosted PostgreSQL (e.g. Render) set DATABASE_SSL=true to enable SSL with certificate
+  // verification. When DATABASE_SSL_REJECT_UNAUTHORIZED is set to 'false' (the Render default
+  // for internal connections that use self-signed certs), certificate verification is skipped.
+  // Local connections always skip SSL.
+  let ssl = false
+  if (!isLocal && process.env.DATABASE_SSL !== 'false') {
+    const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false'
+    ssl = { rejectUnauthorized }
+  }
+
   const pool = new Pool({
     connectionString,
-    ssl: isLocal ? false : { rejectUnauthorized: false },
+    ssl,
   })
 
   const init = async () => {

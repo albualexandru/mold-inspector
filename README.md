@@ -8,6 +8,8 @@ Node.js + React web service for mold inspection workflows.
 - `APP_PASSWORD` (default: `password`)
 - `PORT` (default: `3000`)
 - `DATABASE_URL` — PostgreSQL connection string. When set, the app uses PostgreSQL for persistent storage. When omitted, an in-memory store is used (data is lost on restart).
+- `DATABASE_SSL` — Set to `false` to disable SSL for the database connection (e.g. for local PostgreSQL). Defaults to enabled for non-localhost connections.
+- `DATABASE_SSL_REJECT_UNAUTHORIZED` — Set to `false` to allow self-signed certificates (required for Render's internal PostgreSQL URLs). Defaults to `true` (strict certificate verification).
 
 ## Run locally
 
@@ -53,6 +55,7 @@ npm --prefix client run dev
    - `APP_USERNAME`
    - `APP_PASSWORD`
    - `DATABASE_URL` — paste the **Internal Database URL** copied from the PostgreSQL dashboard
+   - `DATABASE_SSL_REJECT_UNAUTHORIZED` → `false` — required because Render's internal PostgreSQL uses a self-signed certificate
 4. Deploy the service.
 
 Render will provide the `PORT` value automatically.
