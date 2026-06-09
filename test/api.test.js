@@ -78,6 +78,33 @@ test('auth + inspection + public form flow', async (t) => {
     'Basement wall seepage',
   )
 
+  const roomCreateResponse = await request(app)
+    .post(`/api/inspections/${inspection.id}/rooms`)
+    .set('Authorization', 'Token ' + token)
+    .send({ name: 'Bathroom' })
+    .expect(201)
+
+  await request(app)
+    .post(`/api/inspections/${inspection.id}/rooms/${roomCreateResponse.body.room.id}/files`)
+    .set('Authorization', 'Token ' + token)
+    .attach('file', Buffer.from('%PDF-1.7 test file'), {
+      filename: 'lab-results.pdf',
+      contentType: 'application/pdf',
+    })
+    .expect(201)
+
+  const uploadClientImagesResponse = await request(app)
+    .post(`/api/public/${inspection.publicId}/form/files`)
+    .attach('files', Buffer.from('image-1'), { filename: 'damage-1.png', contentType: 'image/png' })
+    .attach('files', Buffer.from('image-2'), { filename: 'damage-2.jpg', contentType: 'image/jpeg' })
+    .expect(201)
+
+  assert.equal(uploadClientImagesResponse.body.clientForm.files.length, 2)
+
+  await request(app)
+    .get(`/api/inspections/${inspection.id}/report/html`)
+    .expect(401)
+
   const report = await request(app)
     .get(`/api/inspections/${inspection.id}/report/html`)
     .set('Authorization', 'Token ' + token)
@@ -85,8 +112,13 @@ test('auth + inspection + public form flow', async (t) => {
 
   assert.match(report.text, /Mold Inspection Report/)
   assert.match(report.text, /Client Intake Questionnaire/)
+  assert.match(report.text, /Client Uploaded Images/)
   assert.match(report.text, /Jane Doe/)
   assert.match(report.text, /Basement wall seepage/)
+  assert.match(report.text, /damage-1\.png/)
+  assert.match(report.text, /damage-2\.jpg/)
+  assert.match(report.text, /lab-results\.pdf/)
+  assert.match(report.text, /download="lab-results\.pdf"/)
 
   await t.test('requires auth on private routes', async () => {
     await request(app).get('/api/inspections').expect(401)

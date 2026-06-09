@@ -26,6 +26,7 @@ function createInMemoryStore() {
       clientForm: {
         questionnaire: emptyQuestionnaire(),
         submittedAt: null,
+        files: [],
       },
       rooms: [],
     }
@@ -71,6 +72,37 @@ function createInMemoryStore() {
     inspection.clientForm = {
       ...inspection.clientForm,
       questionnaire: normalizeQuestionnaire(mergedQuestionnaire),
+      submittedAt: nowIso(),
+      files: Array.isArray(inspection.clientForm.files) ? inspection.clientForm.files : [],
+    }
+    inspection.updatedAt = nowIso()
+
+    return inspection
+  }
+
+  const addClientFormFilesByPublicId = async (publicId, files = []) => {
+    const inspection = await getInspectionByPublicId(publicId)
+    if (!inspection) return null
+
+    const currentClientForm = inspection.clientForm || {
+      questionnaire: emptyQuestionnaire(),
+      submittedAt: null,
+      files: [],
+    }
+
+    const preparedFiles = files.map((file) => ({
+      id: randomUUID(),
+      name: file.originalname,
+      mimeType: file.mimetype,
+      size: file.size,
+      uploadedAt: nowIso(),
+      contentBase64: file.buffer.toString('base64'),
+    }))
+
+    inspection.clientForm = {
+      ...currentClientForm,
+      questionnaire: normalizeQuestionnaire(currentClientForm.questionnaire || {}),
+      files: [...(Array.isArray(currentClientForm.files) ? currentClientForm.files : []), ...preparedFiles],
       submittedAt: nowIso(),
     }
     inspection.updatedAt = nowIso()
@@ -156,6 +188,7 @@ function createInMemoryStore() {
     getInspectionByPublicId,
     updateInspectionDetails,
     updateClientFormByPublicId,
+    addClientFormFilesByPublicId,
     createRoom,
     updateRoom,
     addFileToRoom,

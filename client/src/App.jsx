@@ -112,6 +112,8 @@ const emptyDetails = {
   contactPhone: '',
   notes: '',
 }
+const MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
+const MAX_CLIENT_FORM_FILES = 20
 
 const normalizeAnswer = (value) => {
   if (value === undefined || value === null) return ''
@@ -147,6 +149,8 @@ const questionnaireToEntries = (questionnaire) =>
     answer: readQuestionnaireAnswer(questionnaire, definition),
   }))
 
+const readClientFormFiles = (clientForm) => (Array.isArray((clientForm || {}).files) ? clientForm.files : [])
+
 function App() {
   const isPublicForm = useMemo(() => /^\/public\/[^/]+\/form$/.test(window.location.pathname), [])
 
@@ -161,6 +165,7 @@ function PublicFormPage() {
   const publicId = window.location.pathname.split('/')[2]
   const [form, setForm] = useState(emptyQuestionnaire)
   const [address, setAddress] = useState('')
+  const [uploadedFiles, setUploadedFiles] = useState([])
   const [status, setStatus] = useState('')
   const [formLoaded, setFormLoaded] = useState(false)
   const lastSavedFormRef = useRef(JSON.stringify(emptyQuestionnaire))
@@ -192,9 +197,11 @@ function PublicFormPage() {
     fetch(`/api/public/${publicId}/form`)
       .then((response) => response.json())
       .then((payload) => {
+        const clientForm = payload.clientForm || {}
         const mappedForm = mapQuestionnaireToForm((payload.clientForm || {}).questionnaire || {})
         setAddress(payload.address || '')
         setForm(mappedForm)
+        setUploadedFiles(readClientFormFiles(clientForm))
         lastSavedFormRef.current = JSON.stringify(mappedForm)
         setFormLoaded(true)
       })
@@ -219,6 +226,40 @@ function PublicFormPage() {
   const onSubmit = async (event) => {
     event.preventDefault()
     await saveForm(form, { showSuccess: true })
+  }
+
+  const uploadFiles = async (event) => {
+    const files = Array.from(event.target.files || [])
+    if (!files.length) return
+    if (files.some((file) => file.size > MAX_UPLOAD_SIZE_BYTES)) {
+      setStatus('Each uploaded image must be 10MB or smaller.')
+      event.target.value = ''
+      return
+    }
+    if (uploadedFiles.length + files.length > MAX_CLIENT_FORM_FILES) {
+      setStatus(`A maximum of ${MAX_CLIENT_FORM_FILES} images can be uploaded.`)
+      event.target.value = ''
+      return
+    }
+
+    setStatus('Uploading images...')
+    const formData = new FormData()
+    files.forEach((file) => formData.append('files', file))
+
+    const response = await fetch(`/api/public/${publicId}/form/files`, {
+      method: 'POST',
+      body: formData,
+    })
+
+    event.target.value = ''
+    if (!response.ok) {
+      setStatus('Failed to upload images.')
+      return
+    }
+
+    const payload = await response.json()
+    setUploadedFiles(readClientFormFiles(payload.clientForm))
+    setStatus('Images uploaded.')
   }
 
   return (
@@ -374,6 +415,30 @@ function PublicFormPage() {
           Is there any litigation in progress or being considered in relation to mold in the building? (Yes/No)
           <input value={form.moldLitigation} onChange={(event) => updateField('moldLitigation', event.target.value)} />
         </label>
+        <label>
+          Upload images (max 10MB each)
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={uploadFiles}
+            aria-label="Upload questionnaire images, maximum 10MB each"
+          />
+        </label>
+        {uploadedFiles.length > 0 && (
+          <div className="file-list">
+            {uploadedFiles.map((file) => (
+              <div key={file.id} className="file-item">
+                <img
+                  src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                  alt={file.name}
+                  className="file-preview-image"
+                />
+                <span className="file-name">{file.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <button type="submit">Save</button>
       </form>
       {status ? <p>{status}</p> : null}
@@ -394,7 +459,6 @@ function PrivateDashboard() {
   const [newRoomNotes, setNewRoomNotes] = useState('')
   const [roomNotesDrafts, setRoomNotesDrafts] = useState({})
   const [status, setStatus] = useState('')
-  const [reportHtml, setReportHtml] = useState('')
 
   const lastSavedDetailsRef = useRef(JSON.stringify(emptyDetails))
 
@@ -517,7 +581,6 @@ function PrivateDashboard() {
 
       const payload = await response.json()
       syncSelectedInspection(payload.inspection)
-      setReportHtml('')
     },
     [authorizedFetch, syncSelectedInspection],
   )
@@ -592,7 +655,6 @@ function PrivateDashboard() {
     if (selectedInspection && selectedInspection.id === inspectionId) {
       setSelectedInspection(null)
       setDetailsDraft(emptyDetails)
-      setReportHtml('')
     }
     setStatus('Inspection deleted.')
     await refreshInspections()
@@ -615,22 +677,35 @@ function PrivateDashboard() {
     await refreshInspections()
   }
 
-  const generateReport = async () => {
-    if (!selectedInspection) return
-
-    const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/report/html`)
-    if (!response.ok) return
-
-    const html = await response.text()
-    setReportHtml(html)
-  }
-
   const clientResponseEntries = useMemo(() => {
     if (!selectedInspection) return []
     return questionnaireToEntries((selectedInspection.clientForm || {}).questionnaire || {}).filter(
       ({ answer }) => typeof answer === 'string' && answer.trim(),
     )
   }, [selectedInspection])
+  const clientUploadedImages = useMemo(
+    () => readClientFormFiles((selectedInspection || {}).clientForm).filter((file) => file.mimeType?.startsWith('image/')),
+    [selectedInspection],
+  )
+  const openHtmlReport = async () => {
+    if (!selectedInspection) return
+
+    const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/report/html`)
+    if (!response.ok) {
+      setStatus('Failed to load HTML report.')
+      return
+    }
+
+    const html = await response.text()
+    const reportWindow = window.open('', '_blank', 'noopener')
+    if (!reportWindow) {
+      setStatus('Popup blocked. Please allow popups to view the report.')
+      return
+    }
+    reportWindow.document.open()
+    reportWindow.document.write(html)
+    reportWindow.document.close()
+  }
 
   if (!token) {
     return (
@@ -751,6 +826,23 @@ function PrivateDashboard() {
               ) : (
                 <p>No client responses submitted.</p>
               )}
+              <h4>Client uploaded images</h4>
+              {clientUploadedImages.length > 0 ? (
+                <div className="file-list">
+                  {clientUploadedImages.map((file) => (
+                    <div key={file.id} className="file-item">
+                      <img
+                        src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                        alt={file.name}
+                        className="file-preview-image"
+                      />
+                      <span className="file-name">{file.name}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p>No client images uploaded.</p>
+              )}
 
               <h3>Rooms</h3>
               <form className="form-grid" onSubmit={addRoom}>
@@ -828,10 +920,11 @@ function PrivateDashboard() {
                 ))}
               </ul>
 
-              <button type="button" onClick={generateReport}>
-                Generate HTML report
-              </button>
-              {reportHtml ? <textarea readOnly rows="12" value={reportHtml} /> : null}
+              {selectedInspection ? (
+                <button type="button" onClick={openHtmlReport} className="report-link">
+                  Open HTML report
+                </button>
+              ) : null}
             </>
           ) : (
             <p>Select an inspection to begin.</p>

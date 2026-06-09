@@ -18,6 +18,32 @@ const escapeHtml = (value = '') =>
     .replaceAll("'", '&#39;')
 
 const requiredEnv = (name, fallback) => process.env[name] || fallback
+const MAX_CLIENT_FORM_FILES = 20
+const questionnaireUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) return callback(null, true)
+    return callback(new Error('Only image uploads are allowed'))
+  },
+})
+
+const buildFileHtml = (file) => {
+  const name = escapeHtml(file.name || '')
+  const mimeType = file.mimeType || 'application/octet-stream'
+  const source = `data:${mimeType};base64,${file.contentBase64 || ''}`
+
+  if (mimeType.startsWith('image/')) {
+    return `<figure class="file-item">
+      <img src="${source}" alt="${name}" />
+      <figcaption>${name}</figcaption>
+    </figure>`
+  }
+
+  return `<div class="file-item">
+    <a href="${source}" download="${name}">${name}</a>
+  </div>`
+}
 
 function createApp(options = {}) {
   const app = express()
@@ -87,6 +113,20 @@ function createApp(options = {}) {
     return res.json({ clientForm: inspection.clientForm })
   })
 
+  app.post(
+    '/api/public/:publicId/form/files',
+    questionnaireUpload.array('files', MAX_CLIENT_FORM_FILES),
+    async (req, res) => {
+      const files = Array.isArray(req.files) ? req.files : []
+      if (!files.length) return res.status(400).json({ error: 'No files were uploaded' })
+
+      const inspection = await store.addClientFormFilesByPublicId(req.params.publicId, files)
+      if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
+
+      return res.status(201).json({ clientForm: inspection.clientForm })
+    },
+  )
+
   app.use('/api/inspections', requireAuth)
 
   app.get('/api/inspections', async (req, res) => {
@@ -155,15 +195,21 @@ function createApp(options = {}) {
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
 
     const roomSections = inspection.rooms
-      .map(
-        (room) => `<article>
+      .map((room) => {
+        const files = Array.isArray(room.files) ? room.files : []
+        const fileBlock = files.length
+          ? `<div class="file-grid">${files.map((file) => buildFileHtml(file)).join('')}</div>`
+          : '<p>No room files uploaded.</p>'
+
+        return `<article>
           <h3>${escapeHtml(room.name)}</h3>
           <p><strong>Location:</strong> ${escapeHtml(room.location)}</p>
           <p><strong>Notes:</strong> ${escapeHtml(room.notes)}</p>
           <p><strong>Findings:</strong> ${escapeHtml(room.findings)}</p>
-          <p><strong>Files:</strong> ${room.files.length}</p>
-        </article>`,
-      )
+          <h4>Room Files</h4>
+          ${fileBlock}
+        </article>`
+      })
       .join('')
     const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(
       ({ answer }) => typeof answer === 'string' && answer.trim(),
@@ -176,6 +222,10 @@ function createApp(options = {}) {
           )
           .join('')}</ul>`
       : '<p>No client responses submitted.</p>'
+    const clientFormFiles = Array.isArray((inspection.clientForm || {}).files) ? inspection.clientForm.files : []
+    const clientFilesBlock = clientFormFiles.length
+      ? `<div class="file-grid">${clientFormFiles.map((file) => buildFileHtml(file)).join('')}</div>`
+      : '<p>No client images uploaded.</p>'
 
     const html = `<!DOCTYPE html>
 <html>
@@ -186,20 +236,39 @@ function createApp(options = {}) {
       body { font-family: Arial, sans-serif; margin: 24px; }
       h1, h2 { margin-bottom: 0; }
       article { border-top: 1px solid #ccc; padding-top: 12px; margin-top: 12px; }
+      .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+      .file-item img { max-width: 220px; max-height: 160px; border-radius: 4px; border: 1px solid #d1d5db; object-fit: cover; }
+      .file-item figcaption { margin-top: 4px; font-size: 12px; color: #4b5563; word-break: break-word; }
+      .file-item a { display: inline-block; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 4px; text-decoration: none; color: #1d4ed8; }
     </style>
   </head>
   <body>
     <h1>Mold Inspection Report</h1>
     <p><strong>Address:</strong> ${escapeHtml(inspection.details.address)}</p>
-    <p><strong>Contact:</strong> ${escapeHtml(inspection.details.contactName)} (${escapeHtml(inspection.details.contactEmail)})</p>
+    <p><strong>Contact Name:</strong> ${escapeHtml(inspection.details.contactName)}</p>
+    <p><strong>Contact Email:</strong> ${escapeHtml(inspection.details.contactEmail)}</p>
+    <p><strong>Contact Phone:</strong> ${escapeHtml(inspection.details.contactPhone)}</p>
+    <p><strong>Inspection notes:</strong> ${escapeHtml(inspection.details.notes)}</p>
     <h2>Client Intake Questionnaire</h2>
     ${questionnaireBlock}
+    <h2>Client Uploaded Images</h2>
+    ${clientFilesBlock}
     <h2>Rooms</h2>
     ${roomSections || '<p>No rooms added.</p>'}
   </body>
 </html>`
 
     res.type('html').send(html)
+  })
+
+  app.use((error, req, res, next) => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'Each uploaded file must be 10MB or smaller' })
+    }
+    if (error && error.message === 'Only image uploads are allowed') {
+      return res.status(400).json({ error: 'Only image uploads are allowed' })
+    }
+    return next(error)
   })
 
   const clientDistPath = path.resolve(process.cwd(), 'client', 'dist')
