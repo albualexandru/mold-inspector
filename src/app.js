@@ -70,11 +70,19 @@ function createApp(options = {}) {
     legacyHeaders: false,
   })
 
+  const SESSION_TTL_MS = 24 * 60 * 60 * 1000
+
   const requireAuth = (req, res, next) => {
     const header = req.get('authorization') || ''
     const [scheme, token] = header.split(' ')
 
-    if ((scheme !== 'Bearer' && scheme !== 'Token') || !token || !sessions.has(token)) {
+    if ((scheme !== 'Bearer' && scheme !== 'Token') || !token) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    const session = sessions.get(token)
+    if (!session || Date.now() - session.createdAt > SESSION_TTL_MS) {
+      sessions.delete(token)
       return res.status(401).json({ error: 'Unauthorized' })
     }
 

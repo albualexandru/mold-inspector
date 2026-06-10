@@ -434,8 +434,35 @@ function PublicFormPage() {
   )
 }
 
+const TOKEN_KEY = 'mi_token'
+const TOKEN_EXPIRY_KEY = 'mi_token_expiry'
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000
+
+const loadStoredToken = () => {
+  try {
+    const token = localStorage.getItem(TOKEN_KEY)
+    const expiry = Number(localStorage.getItem(TOKEN_EXPIRY_KEY))
+    if (token && expiry && Date.now() < expiry) return token
+  } catch {}
+  return ''
+}
+
+const persistToken = (token) => {
+  try {
+    localStorage.setItem(TOKEN_KEY, token)
+    localStorage.setItem(TOKEN_EXPIRY_KEY, String(Date.now() + TOKEN_TTL_MS))
+  } catch {}
+}
+
+const clearToken = () => {
+  try {
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(TOKEN_EXPIRY_KEY)
+  } catch {}
+}
+
 function PrivateDashboard() {
-  const [token, setToken] = useState('')
+  const [token, setToken] = useState(() => loadStoredToken())
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [loginError, setLoginError] = useState('')
@@ -451,14 +478,17 @@ function PrivateDashboard() {
   const [savingRoomId, setSavingRoomId] = useState(null)
 
   const authorizedFetch = useCallback(
-    (url, options = {}, authToken = token) =>
-      fetch(url, {
+    async (url, options = {}, authToken = token) => {
+      const response = await fetch(url, {
         ...options,
-        headers: {
-          ...(options.headers || {}),
-          Authorization: `Token ${authToken}`,
-        },
-      }),
+        headers: { ...(options.headers || {}), Authorization: `Token ${authToken}` },
+      })
+      if (response.status === 401) {
+        clearToken()
+        setToken('')
+      }
+      return response
+    },
     [token],
   )
 
@@ -480,6 +510,12 @@ function PrivateDashboard() {
     },
     [authorizedFetch, token],
   )
+
+  // On mount, if we have a stored token load the inspections list automatically.
+  useEffect(() => {
+    if (token) void refreshInspections(token)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const saveDetailsDraft = useCallback(
     async (nextDetails) => {
@@ -523,6 +559,7 @@ function PrivateDashboard() {
     }
 
     const payload = await response.json()
+    persistToken(payload.token)
     setToken(payload.token)
     await refreshInspections(payload.token)
   }
