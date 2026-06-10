@@ -492,6 +492,20 @@ function PrivateDashboard() {
     )
   }, [])
 
+  // Updates server-side inspection data (rooms, etc.) without resetting in-progress draft fields.
+  // Used by background refreshes and auto-save callbacks so typing is never interrupted.
+  const updateInspectionData = useCallback((inspection) => {
+    setSelectedInspection(inspection)
+    // Only add draft entries for rooms that don't already have one; preserve existing edits.
+    setRoomNotesDrafts((prev) => {
+      const next = { ...prev }
+      for (const room of (inspection.rooms || [])) {
+        if (!(room.id in next)) next[room.id] = room.notes || ''
+      }
+      return next
+    })
+  }, [])
+
   const refreshInspections = useCallback(
     async (authToken = token) => {
       const response = await authorizedFetch('/api/inspections', {}, authToken)
@@ -503,11 +517,11 @@ function PrivateDashboard() {
       if (selectedInspection) {
         const updatedSelected = payload.inspections.find((inspection) => inspection.id === selectedInspection.id)
         if (updatedSelected) {
-          syncSelectedInspection(updatedSelected)
+          updateInspectionData(updatedSelected)
         }
       }
     },
-    [authorizedFetch, selectedInspection, syncSelectedInspection, token],
+    [authorizedFetch, selectedInspection, updateInspectionData, token],
   )
 
   const saveDetailsDraft = useCallback(
@@ -526,13 +540,15 @@ function PrivateDashboard() {
         return false
       }
 
-      const payload = await response.json()
-      syncSelectedInspection(payload.inspection)
+      // Don't update detailsDraft from the server response — the user is the source of
+      // truth for the form while they're editing. Just advance the saved-state cursor.
+      lastSavedDetailsRef.current = JSON.stringify(nextDetails)
       setStatus(showSuccess ? 'Inspection details saved.' : 'Inspection details auto-saved.')
+      // Refresh the sidebar address without resetting any draft fields.
       await refreshInspections()
       return true
     },
-    [authorizedFetch, refreshInspections, selectedInspection, syncSelectedInspection],
+    [authorizedFetch, refreshInspections, selectedInspection],
   )
 
   useEffect(() => {
