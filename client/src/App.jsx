@@ -263,10 +263,17 @@ function PublicFormPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Pre-Inspection Mold Questionnaire</h1>
-      <p>Inspection address: {address || 'Not provided yet'}</p>
-      <form onSubmit={onSubmit} className="panel form-grid">
+    <div className="app-shell">
+      <header className="public-header">
+        <span className="public-header-brand">🔍 Mold Inspector</span>
+      </header>
+      <div className="public-form-content">
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 4px' }}>Pre-Inspection Mold Questionnaire</h1>
+        <p style={{ color: 'var(--c-muted)', fontSize: 14, margin: '0 0 20px' }}>
+          Inspection address: <strong>{address || 'Not provided yet'}</strong>
+        </p>
+        <div className="panel">
+          <form onSubmit={onSubmit} className="form-grid">
         <h2>Client and Property Information</h2>
         <label>
           Client Name
@@ -440,9 +447,11 @@ function PublicFormPage() {
           </div>
         )}
         <button type="submit">Save</button>
-      </form>
-      {status ? <p>{status}</p> : null}
-    </main>
+          </form>
+        </div>
+        {status ? <div className="status-toast">{status}</div> : null}
+      </div>
+    </div>
   )
 }
 
@@ -687,253 +696,290 @@ function PrivateDashboard() {
     () => readClientFormFiles((selectedInspection || {}).clientForm).filter((file) => file.mimeType?.startsWith('image/')),
     [selectedInspection],
   )
-  const openHtmlReport = async () => {
+  const openHtmlReport = () => {
     if (!selectedInspection) return
-
-    const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/report/html`)
-    if (!response.ok) {
-      setStatus('Failed to load HTML report.')
-      return
-    }
-
-    const html = await response.text()
-    const reportWindow = window.open('', '_blank', 'noopener')
-    if (!reportWindow) {
-      setStatus('Popup blocked. Please allow popups to view the report.')
-      return
-    }
-    reportWindow.document.open()
-    reportWindow.document.write(html)
-    reportWindow.document.close()
+    window.open(`/public/${selectedInspection.publicId}/report`, '_blank', 'noopener,noreferrer')
   }
 
   if (!token) {
     return (
-      <main className="app-shell">
-        <h1>Mold Inspector</h1>
-        <form className="panel form-grid" onSubmit={login}>
-          <label>
-            Username
-            <input value={username} onChange={(event) => setUsername(event.target.value)} />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </label>
-          <button type="submit">Log in</button>
-        </form>
-        {loginError ? <p>{loginError}</p> : null}
-      </main>
+      <div className="login-container">
+        <div className="panel login-card">
+          <div className="login-header">
+            <div className="login-logo">🔍</div>
+            <h1 className="login-title">Mold Inspector</h1>
+            <p className="login-subtitle">Sign in to manage inspections</p>
+          </div>
+          <form className="form-grid" onSubmit={login}>
+            <label>
+              Username
+              <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete="current-password"
+              />
+            </label>
+            <button type="submit">Sign in</button>
+          </form>
+          {loginError ? <p className="error-text" style={{ marginTop: 10 }}>{loginError}</p> : null}
+        </div>
+      </div>
     )
   }
 
   return (
-    <main className="app-shell">
-      <header className="header-row">
-        <h1>Mold Inspections</h1>
+    <div className="app-shell">
+      <header className="app-topbar">
+        <span className="app-topbar-brand">Mold Inspector</span>
         <button type="button" onClick={createInspection}>
-          New inspection
+          + New Inspection
         </button>
       </header>
 
-      <section className="layout-grid">
-        <aside className="panel">
-          <h2>Inspections</h2>
-          <ul className="list">
-            {inspections.map((inspection) => (
-              <li key={inspection.id} className="inspection-item">
-                <button type="button" onClick={() => selectInspection(inspection.id)}>
-                  {inspection.details.address || inspection.id.slice(0, 8)}
-                </button>
-                <button
-                  type="button"
-                  className="btn-danger btn-sm"
-                  onClick={() => deleteInspection(inspection.id)}
-                  title="Delete inspection"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
-          </ul>
-        </aside>
-
-        <section className="panel">
-          {selectedInspection ? (
-            <>
-              <h2>Inspection details</h2>
-              <p>
-                Public form link:{' '}
-                <a href={`/public/${selectedInspection.publicId}/form`} target="_blank" rel="noreferrer">
-                  {window.location.origin}/public/{selectedInspection.publicId}/form
-                </a>
-              </p>
-
-              <form className="form-grid" onSubmit={saveDetails}>
-                <label>
-                  Address
-                  <input
-                    value={detailsDraft.address}
-                    onChange={(event) => setDetailsDraft({ ...detailsDraft, address: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Contact name
-                  <input
-                    value={detailsDraft.contactName}
-                    onChange={(event) => setDetailsDraft({ ...detailsDraft, contactName: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Contact email
-                  <input
-                    value={detailsDraft.contactEmail}
-                    onChange={(event) => setDetailsDraft({ ...detailsDraft, contactEmail: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Contact phone
-                  <input
-                    value={detailsDraft.contactPhone}
-                    onChange={(event) => setDetailsDraft({ ...detailsDraft, contactPhone: event.target.value })}
-                  />
-                </label>
-                <label>
-                  Notes
-                  <textarea
-                    rows="3"
-                    value={detailsDraft.notes}
-                    onChange={(event) => setDetailsDraft({ ...detailsDraft, notes: event.target.value })}
-                  />
-                </label>
-                <button type="submit">Save details</button>
-              </form>
-
-              <h3>Client response</h3>
-              {clientResponseEntries.length ? (
-                <dl className="questionnaire-list">
-                  {clientResponseEntries.map((entry) => (
-                    <div key={entry.key} className="questionnaire-item">
-                      <dt>{entry.question}</dt>
-                      <dd>{entry.answer}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p>No client responses submitted.</p>
+      <main className="app-content">
+        <div className="layout-grid">
+          <aside className="panel sidebar">
+            <h2 className="section-title">Inspections</h2>
+            <ul className="list">
+              {inspections.length === 0 && (
+                <li style={{ color: 'var(--c-muted)', fontSize: 13, padding: '4px 2px' }}>No inspections yet.</li>
               )}
-              <h4>Client uploaded images</h4>
-              {clientUploadedImages.length > 0 ? (
-                <div className="file-list">
-                  {clientUploadedImages.map((file) => (
-                    <div key={file.id} className="file-item">
-                      <img
-                        src={`data:${file.mimeType};base64,${file.contentBase64}`}
-                        alt={file.name}
-                        className="file-preview-image"
-                      />
-                      <span className="file-name">{file.name}</span>
-                    </div>
-                  ))}
+              {inspections.map((inspection) => (
+                <li key={inspection.id} className="inspection-item">
+                  <button
+                    type="button"
+                    className={`inspection-item-btn${selectedInspection?.id === inspection.id ? ' active' : ''}`}
+                    onClick={() => selectInspection(inspection.id)}
+                  >
+                    {inspection.details.address || `#${inspection.id.slice(0, 8)}`}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-danger btn-sm btn-icon"
+                    onClick={() => deleteInspection(inspection.id)}
+                    title="Delete inspection"
+                    aria-label="Delete inspection"
+                  >
+                    ✕
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </aside>
+
+          <section className="panel">
+            {selectedInspection ? (
+              <>
+                <h2 className="section-title">Inspection Details</h2>
+
+                <div className="info-box" style={{ marginBottom: 16 }}>
+                  <strong>Public form link: </strong>
+                  <a href={`/public/${selectedInspection.publicId}/form`} target="_blank" rel="noreferrer">
+                    {window.location.origin}/public/{selectedInspection.publicId}/form
+                  </a>
                 </div>
-              ) : (
-                <p>No client images uploaded.</p>
-              )}
 
-              <h3>Rooms</h3>
-              <form className="form-grid" onSubmit={addRoom}>
-                <label>
-                  Room name
-                  <input value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} />
-                </label>
-                <label>
-                  Notes
-                  <input value={newRoomNotes} onChange={(event) => setNewRoomNotes(event.target.value)} />
-                </label>
-                <button type="submit">Add room</button>
-              </form>
-              <ul className="list">
-                {selectedInspection.rooms.map((room) => (
-                  <li key={room.id} className="room-card">
-                    <div className="room-card-header">
-                      <strong>{room.name}</strong>
-                      <button
-                        type="button"
-                        className="btn-danger btn-sm"
-                        onClick={() => deleteRoom(room.id)}
-                        title="Delete room"
-                      >
-                        ✕
-                      </button>
-                    </div>
+                <form className="form-grid" onSubmit={saveDetails}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <label>
-                      Room notes
-                      <textarea
-                        rows="3"
-                        value={roomNotesDrafts[room.id] || ''}
-                        onChange={(event) =>
-                          setRoomNotesDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [room.id]: event.target.value,
-                          }))
-                        }
+                      Address
+                      <input
+                        value={detailsDraft.address}
+                        onChange={(event) => setDetailsDraft({ ...detailsDraft, address: event.target.value })}
                       />
                     </label>
-                    <button type="button" onClick={() => saveRoomNotes(room.id)}>
-                      Save room notes
-                    </button>
-                    <p>{room.files.length} file(s)</p>
-                    {room.files.length > 0 && (
-                      <div className="file-list">
-                        {room.files.map((file) => (
-                          <div key={file.id} className="file-item">
-                            {file.mimeType && file.mimeType.startsWith('image/') ? (
-                              <img
-                                src={`data:${file.mimeType};base64,${file.contentBase64}`}
-                                alt={file.name}
-                                className="file-preview-image"
-                              />
-                            ) : (
-                              <a
-                                href={`data:${file.mimeType || 'application/octet-stream'};base64,${file.contentBase64}`}
-                                download={file.name}
-                                className="file-download-link"
-                              >
-                                📄 {file.name}
-                              </a>
-                            )}
-                            <span className="file-name">{file.name}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*,application/pdf"
-                      onChange={(event) => uploadRoomFile(room.id, event.target.files?.[0])}
+                    <label>
+                      Contact name
+                      <input
+                        value={detailsDraft.contactName}
+                        onChange={(event) => setDetailsDraft({ ...detailsDraft, contactName: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Contact email
+                      <input
+                        type="email"
+                        value={detailsDraft.contactEmail}
+                        onChange={(event) => setDetailsDraft({ ...detailsDraft, contactEmail: event.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Contact phone
+                      <input
+                        type="tel"
+                        value={detailsDraft.contactPhone}
+                        onChange={(event) => setDetailsDraft({ ...detailsDraft, contactPhone: event.target.value })}
+                      />
+                    </label>
+                  </div>
+                  <label>
+                    Notes
+                    <textarea
+                      rows="3"
+                      value={detailsDraft.notes}
+                      onChange={(event) => setDetailsDraft({ ...detailsDraft, notes: event.target.value })}
                     />
-                  </li>
-                ))}
-              </ul>
+                  </label>
+                  <div>
+                    <button type="submit">Save details</button>
+                  </div>
+                </form>
 
-              {selectedInspection ? (
-                <button type="button" onClick={openHtmlReport} className="report-link">
-                  Open HTML report
-                </button>
-              ) : null}
-            </>
-          ) : (
-            <p>Select an inspection to begin.</p>
-          )}
-        </section>
-      </section>
+                <hr className="divider" />
 
-      {status ? <p>{status}</p> : null}
-    </main>
+                <h3 className="section-title">Client Responses</h3>
+                {clientResponseEntries.length ? (
+                  <dl className="questionnaire-list">
+                    {clientResponseEntries.map((entry) => (
+                      <div key={entry.key} className="questionnaire-item">
+                        <dt>{entry.question}</dt>
+                        <dd>{entry.answer}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p style={{ color: 'var(--c-muted)', fontSize: 14 }}>No client responses submitted.</p>
+                )}
+
+                <p className="subsection-title">Client uploaded images</p>
+                {clientUploadedImages.length > 0 ? (
+                  <div className="file-list">
+                    {clientUploadedImages.map((file) => (
+                      <div key={file.id} className="file-item">
+                        <img
+                          src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                          alt={file.name}
+                          className="file-preview-image"
+                        />
+                        <span className="file-name">{file.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p style={{ color: 'var(--c-muted)', fontSize: 14 }}>No client images uploaded.</p>
+                )}
+
+                <hr className="divider" />
+
+                <h3 className="section-title">Rooms</h3>
+                <form className="form-grid" onSubmit={addRoom} style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label>
+                      Room name
+                      <input value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} placeholder="e.g. Basement" />
+                    </label>
+                    <label>
+                      Notes
+                      <input value={newRoomNotes} onChange={(event) => setNewRoomNotes(event.target.value)} placeholder="Optional" />
+                    </label>
+                  </div>
+                  <div>
+                    <button type="submit">Add room</button>
+                  </div>
+                </form>
+                <ul className="list">
+                  {selectedInspection.rooms.map((room) => (
+                    <li key={room.id} className="room-card">
+                      <div className="room-card-header">
+                        <span className="room-name">{room.name}</span>
+                        <button
+                          type="button"
+                          className="btn-danger btn-sm btn-icon"
+                          onClick={() => deleteRoom(room.id)}
+                          title="Delete room"
+                          aria-label="Delete room"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <label>
+                        Room notes
+                        <textarea
+                          rows="3"
+                          value={roomNotesDrafts[room.id] || ''}
+                          onChange={(event) =>
+                            setRoomNotesDrafts((currentDrafts) => ({
+                              ...currentDrafts,
+                              [room.id]: event.target.value,
+                            }))
+                          }
+                        />
+                      </label>
+                      <div>
+                        <button type="button" onClick={() => saveRoomNotes(room.id)}>
+                          Save room notes
+                        </button>
+                      </div>
+                      {room.files.length > 0 && (
+                        <div className="file-list">
+                          {room.files.map((file) => (
+                            <div key={file.id} className="file-item">
+                              {file.mimeType && file.mimeType.startsWith('image/') ? (
+                                <img
+                                  src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                                  alt={file.name}
+                                  className="file-preview-image"
+                                />
+                              ) : (
+                                <a
+                                  href={`data:${file.mimeType || 'application/octet-stream'};base64,${file.contentBase64}`}
+                                  download={file.name}
+                                  className="file-download-link"
+                                >
+                                  📄 {file.name}
+                                </a>
+                              )}
+                              <span className="file-name">{file.name}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <label style={{ fontSize: 13, color: 'var(--c-muted)' }}>
+                        Add photo / file
+                        <input
+                          type="file"
+                          accept="image/*,application/pdf"
+                          onChange={(event) => uploadRoomFile(room.id, event.target.files?.[0])}
+                        />
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+
+                <hr className="divider" />
+
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button type="button" className="report-link" onClick={openHtmlReport}>
+                    📄 View Full Report
+                  </button>
+                  <a
+                    href={`/public/${selectedInspection.publicId}/report`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="report-link btn-secondary"
+                    style={{ color: 'var(--c-primary)', background: 'var(--c-primary-light)', border: 'none' }}
+                  >
+                    🔗 Copy Report Link
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div className="empty-state">
+                <div className="empty-state-icon">📋</div>
+                <p>Select an inspection from the sidebar to get started.</p>
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+
+      {status ? <div className="status-toast">{status}</div> : null}
+    </div>
   )
 }
 

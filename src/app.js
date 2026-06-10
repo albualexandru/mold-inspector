@@ -4,7 +4,6 @@ const express = require('express')
 const cors = require('cors')
 const multer = require('multer')
 const rateLimit = require('express-rate-limit')
-const { createInMemoryStore } = require('./store')
 const { questionnaireToEntries } = require('./questionnaire')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
@@ -46,8 +45,9 @@ const buildFileHtml = (file) => {
 }
 
 function createApp(options = {}) {
+  if (!options.store) throw new Error('A store must be provided to createApp. In-memory storage is no longer supported.')
   const app = express()
-  const store = options.store || createInMemoryStore()
+  const store = options.store
   const sessions = new Map()
 
   const authUsername = requiredEnv('APP_USERNAME', 'admin')
@@ -92,6 +92,124 @@ function createApp(options = {}) {
     sessions.set(token, { createdAt: Date.now() })
 
     return res.json({ token })
+  })
+
+  app.get('/public/:publicId/report', pageLimiter, async (req, res) => {
+    const inspection = await store.getInspectionByPublicId(req.params.publicId)
+    if (!inspection) return res.status(404).send('<h1>Report not found</h1>')
+
+    const roomSections = inspection.rooms
+      .map((room) => {
+        const files = Array.isArray(room.files) ? room.files : []
+        const fileBlock = files.length
+          ? `<div class="file-grid">${files.map((file) => buildFileHtml(file)).join('')}</div>`
+          : '<p class="empty-note">No room files uploaded.</p>'
+
+        return `<div class="room-card">
+          <h3 class="room-title">${escapeHtml(room.name)}</h3>
+          <table class="info-table">
+            <tr><th>Location</th><td>${escapeHtml(room.location) || '<em>—</em>'}</td></tr>
+            <tr><th>Notes</th><td>${escapeHtml(room.notes) || '<em>—</em>'}</td></tr>
+            <tr><th>Findings</th><td>${escapeHtml(room.findings) || '<em>—</em>'}</td></tr>
+          </table>
+          <h4 class="subsection-heading">Room Photos</h4>
+          ${fileBlock}
+        </div>`
+      })
+      .join('')
+
+    const questionnaireEntries = questionnaireToEntries(inspection.clientForm.questionnaire || {}).filter(
+      ({ answer }) => typeof answer === 'string' && answer.trim(),
+    )
+    const questionnaireBlock = questionnaireEntries.length
+      ? `<dl class="questionnaire-list">${questionnaireEntries
+          .map(
+            ({ question, answer }) =>
+              `<div class="q-item"><dt>${escapeHtml(question)}</dt><dd>${escapeHtml(answer)}</dd></div>`,
+          )
+          .join('')}</dl>`
+      : '<p class="empty-note">No client responses submitted.</p>'
+
+    const clientFormFiles = Array.isArray((inspection.clientForm || {}).files) ? inspection.clientForm.files : []
+    const clientFilesBlock = clientFormFiles.length
+      ? `<div class="file-grid">${clientFormFiles.map((file) => buildFileHtml(file)).join('')}</div>`
+      : '<p class="empty-note">No client images uploaded.</p>'
+
+    const generatedAt = new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mold Inspection Report — ${escapeHtml(inspection.details.address || 'No address')}</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      body { font-family: system-ui, -apple-system, sans-serif; margin: 0; background: #f8fafc; color: #0f172a; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+      .page { max-width: 860px; margin: 0 auto; padding: 32px 24px 64px; }
+      .report-header { background: #1e40af; color: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 32px; }
+      .report-header h1 { margin: 0 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -0.3px; }
+      .report-meta { font-size: 13px; opacity: 0.8; }
+      .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgb(0 0 0 / .06); }
+      .card h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: #1e40af; border-bottom: 2px solid #dbeafe; padding-bottom: 10px; }
+      .info-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+      .info-table th { text-align: left; width: 160px; padding: 7px 12px 7px 0; font-weight: 600; color: #64748b; vertical-align: top; }
+      .info-table td { padding: 7px 0; color: #0f172a; }
+      .room-card { background: #fafafa; border: 1.5px solid #e2e8f0; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+      .room-title { margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #1e40af; }
+      .subsection-heading { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin: 14px 0 8px; }
+      .questionnaire-list { margin: 0; display: grid; gap: 10px; }
+      .q-item { border-left: 3px solid #2563eb; padding: 8px 12px; background: #f8fafc; border-radius: 0 6px 6px 0; }
+      .q-item dt { font-weight: 600; font-size: 13px; color: #475569; }
+      .q-item dd { margin: 3px 0 0; font-size: 14px; }
+      .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+      .file-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+      .file-item img { max-width: 200px; max-height: 150px; border-radius: 6px; border: 1px solid #e2e8f0; object-fit: cover; }
+      .file-item figcaption { font-size: 11px; color: #64748b; word-break: break-word; text-align: center; max-width: 200px; }
+      .file-item a { display: inline-block; padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 6px; text-decoration: none; color: #2563eb; font-size: 13px; background: #fff; }
+      .empty-note { color: #94a3b8; font-style: italic; font-size: 14px; margin: 0; }
+      .rooms-section h2 { margin: 0 0 16px; font-size: 18px; font-weight: 700; color: #1e40af; }
+      @media print { body { background: #fff; } .card, .room-card { box-shadow: none; } }
+      @media (max-width: 600px) { .info-table th { width: 120px; } .report-header { padding: 20px; } }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div class="report-header">
+        <h1>Mold Inspection Report</h1>
+        <div class="report-meta">Generated ${escapeHtml(generatedAt)}</div>
+      </div>
+
+      <div class="card">
+        <h2>Inspection Details</h2>
+        <table class="info-table">
+          <tr><th>Address</th><td>${escapeHtml(inspection.details.address) || '<em>—</em>'}</td></tr>
+          <tr><th>Contact Name</th><td>${escapeHtml(inspection.details.contactName) || '<em>—</em>'}</td></tr>
+          <tr><th>Contact Email</th><td>${escapeHtml(inspection.details.contactEmail) || '<em>—</em>'}</td></tr>
+          <tr><th>Contact Phone</th><td>${escapeHtml(inspection.details.contactPhone) || '<em>—</em>'}</td></tr>
+          <tr><th>Notes</th><td>${escapeHtml(inspection.details.notes) || '<em>—</em>'}</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Client Intake Questionnaire</h2>
+        ${questionnaireBlock}
+      </div>
+
+      <div class="card">
+        <h2>Client Uploaded Images</h2>
+        ${clientFilesBlock}
+      </div>
+
+      <div class="card rooms-section">
+        <h2>Rooms</h2>
+        ${roomSections || '<p class="empty-note">No rooms added.</p>'}
+      </div>
+    </div>
+  </body>
+</html>`
+
+    res.type('html').send(html)
   })
 
   app.get('/api/public/:publicId/form', async (req, res) => {

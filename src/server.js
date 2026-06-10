@@ -4,16 +4,16 @@ const { createDbStore } = require('./db-store')
 const port = Number(process.env.PORT || 3000)
 
 async function main() {
-  let store
-
-  if (process.env.DATABASE_URL) {
-    const dbStore = createDbStore(process.env.DATABASE_URL)
-    await dbStore.init()
-    store = dbStore
-    console.log('Connected to PostgreSQL database')
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL environment variable is required. In-memory storage is no longer supported.')
+    process.exit(1)
   }
 
-  const app = createApp({ store })
+  const dbStore = createDbStore(process.env.DATABASE_URL)
+  await dbStore.init()
+  console.log('Connected to PostgreSQL database')
+
+  const app = createApp({ store: dbStore })
 
   app.listen(port, () => {
     console.log(`Mold Inspector service listening on ${port}`)
