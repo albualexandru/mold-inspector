@@ -220,6 +220,17 @@ function createApp(options = {}) {
     res.type('html').send(html)
   })
 
+  app.delete('/api/public/:publicId/form/files/:fileId', async (req, res) => {
+    const inspection = await store.getInspectionByPublicId(req.params.publicId)
+    if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
+    // Verify this file belongs to this inspection's client form
+    const owned = inspection.clientForm.files.some((f) => f.id === req.params.fileId)
+    if (!owned) return res.status(404).json({ error: 'File not found' })
+    const deleted = await store.deleteFile(req.params.fileId)
+    if (!deleted) return res.status(404).json({ error: 'File not found' })
+    return res.status(204).end()
+  })
+
   app.get('/api/public/:publicId/form', async (req, res) => {
     const inspection = await store.getInspectionByPublicId(req.params.publicId)
     if (!inspection) return res.status(404).json({ error: 'Inspection not found' })
@@ -264,6 +275,12 @@ function createApp(options = {}) {
     res.set('Content-Length', buffer.length)
     res.set('Cache-Control', 'public, max-age=31536000, immutable')
     return res.send(buffer)
+  })
+
+  app.delete('/api/files/:fileId', requireAuth, async (req, res) => {
+    const deleted = await store.deleteFile(req.params.fileId)
+    if (!deleted) return res.status(404).json({ error: 'File not found' })
+    return res.status(204).end()
   })
 
   app.use('/api/inspections', requireAuth)

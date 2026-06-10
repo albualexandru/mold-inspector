@@ -339,6 +339,14 @@ function createDbStore(connectionString) {
     return rowToFile(rows[0])
   }
 
+  const deleteFile = async (fileId) => {
+    const { rows } = await pool.query('SELECT id, inspection_id FROM files WHERE id = $1', [fileId])
+    if (!rows.length) return false
+    await pool.query('DELETE FROM files WHERE id = $1', [fileId])
+    await pool.query('UPDATE inspections SET updated_at = $2 WHERE id = $1', [rows[0].inspection_id, nowIso()])
+    return true
+  }
+
   const deleteInspection = async (id) => {
     const { rows } = await pool.query('SELECT id FROM inspections WHERE id = $1', [id])
     if (!rows.length) return false
@@ -364,6 +372,7 @@ function createDbStore(connectionString) {
     getInspection,
     getInspectionByPublicId,
     getFile,
+    deleteFile,
     updateInspectionDetails,
     updateClientFormByPublicId,
     addClientFormFilesByPublicId,

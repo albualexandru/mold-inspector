@@ -421,6 +421,16 @@ function PublicFormPage() {
                   className="file-preview-image"
                 />
                 <span className="file-name">{file.name}</span>
+                <button
+                  type="button"
+                  className="btn-danger btn-sm"
+                  onClick={async () => {
+                    const res = await fetch(`/api/public/${publicId}/form/files/${file.id}`, { method: 'DELETE' })
+                    if (res.ok) setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))
+                  }}
+                >
+                  Remove
+                </button>
               </div>
             ))}
           </div>
@@ -891,6 +901,20 @@ function PrivateDashboard() {
                           className="file-preview-image"
                         />
                         <span className="file-name">{file.name}</span>
+                        <button
+                          type="button"
+                          className="btn-danger btn-sm"
+                          onClick={() =>
+                            authorizedFetch(`/api/files/${file.id}`, { method: 'DELETE' }).then((res) => {
+                              if (res.ok)
+                                setSelectedInspection((prev) =>
+                                  prev ? { ...prev, clientForm: { ...prev.clientForm, files: prev.clientForm.files.filter((f) => f.id !== file.id) } } : prev,
+                                )
+                            })
+                          }
+                        >
+                          Remove
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -973,6 +997,22 @@ function PrivateDashboard() {
                                 </a>
                               )}
                               <span className="file-name">{file.name}</span>
+                              <button
+                                type="button"
+                                className="btn-danger btn-sm"
+                                onClick={() =>
+                                  authorizedFetch(`/api/files/${file.id}`, { method: 'DELETE' }).then((res) => {
+                                    if (res.ok)
+                                      setSelectedInspection((prev) =>
+                                        prev
+                                          ? { ...prev, rooms: prev.rooms.map((r) => r.id === room.id ? { ...r, files: r.files.filter((f) => f.id !== file.id) } : r) }
+                                          : prev,
+                                      )
+                                  })
+                                }
+                              >
+                                Remove
+                              </button>
                             </div>
                           ))}
                         </div>
