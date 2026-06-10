@@ -4,12 +4,7 @@ const { normalizeQuestionnaire } = require('./questionnaire')
 
 const nowIso = () => new Date().toISOString()
 const emptyQuestionnaire = () => normalizeQuestionnaire({})
-const emptyClientForm = () => ({ questionnaire: emptyQuestionnaire(), submittedAt: null, files: [] })
-const ensureFilesArray = (clientForm = {}) => ({
-  ...emptyClientForm(),
-  ...clientForm,
-  files: Array.isArray(clientForm.files) ? clientForm.files : [],
-})
+const emptyClientForm = () => ({ questionnaire: emptyQuestionnaire(), submittedAt: null })
 
 function createDbStore(connectionString) {
   const isLocal =
@@ -56,10 +51,13 @@ function createDbStore(connectionString) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `)
+    await pool.query('DROP TABLE IF EXISTS files')
     await pool.query(`
       CREATE TABLE IF NOT EXISTS files (
         id UUID PRIMARY KEY,
-        room_id UUID NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        inspection_id UUID NOT NULL REFERENCES inspections(id) ON DELETE CASCADE,
+        room_id UUID REFERENCES rooms(id) ON DELETE CASCADE,
+        category TEXT NOT NULL DEFAULT 'room',
         name TEXT NOT NULL DEFAULT '',
         mime_type TEXT NOT NULL DEFAULT '',
         size INTEGER NOT NULL DEFAULT 0,
@@ -75,7 +73,7 @@ function createDbStore(connectionString) {
     mimeType: row.mime_type,
     size: row.size,
     uploadedAt: row.uploaded_at instanceof Date ? row.uploaded_at.toISOString() : row.uploaded_at,
-    contentBase64: row.content_base64,
+    url: `/api/files/${row.id}`,
   })
 
   const rowToRoom = (row, files = []) => ({
@@ -99,7 +97,11 @@ function createDbStore(connectionString) {
       contactPhone: row.contact_phone,
       notes: row.notes,
     },
-    clientForm: ensureFilesArray(row.client_form || {}),
+    clientForm: {
+      questionnaire: normalizeQuestionnaire((row.client_form || {}).questionnaire || {}),
+      submittedAt: (row.client_form || {}).submittedAt || null,
+      files: [],
+    },
     rooms,
   })
 
@@ -117,6 +119,21 @@ function createDbStore(connectionString) {
         return rowToRoom(roomRow, fileRows.map(rowToFile))
       }),
     )
+  }
+
+  const loadClientFormFiles = async (inspectionId) => {
+    const { rows } = await pool.query(
+      "SELECT * FROM files WHERE inspection_id = $1 AND category = 'client_form' ORDER BY uploaded_at",
+      [inspectionId],
+    )
+    return rows.map(rowToFile)
+  }
+
+  const getFile = async (fileId) => {
+    const { rows } = await pool.query('SELECT * FROM files WHERE id = $1', [fileId])
+    if (!rows.length) return null
+    const row = rows[0]
+    return { mimeType: row.mime_type, name: row.name, contentBase64: row.content_base64 }
   }
 
   const createInspection = async (input = {}) => {
@@ -151,8 +168,13 @@ function createDbStore(connectionString) {
     const { rows } = await pool.query('SELECT * FROM inspections ORDER BY created_at DESC')
     return Promise.all(
       rows.map(async (row) => {
-        const rooms = await loadRoomsWithFiles(row.id)
-        return rowToInspection(row, rooms)
+        const [rooms, clientFiles] = await Promise.all([
+          loadRoomsWithFiles(row.id),
+          loadClientFormFiles(row.id),
+        ])
+        const inspection = rowToInspection(row, rooms)
+        inspection.clientForm.files = clientFiles
+        return inspection
       }),
     )
   }
@@ -160,15 +182,20 @@ function createDbStore(connectionString) {
   const getInspection = async (id) => {
     const { rows } = await pool.query('SELECT * FROM inspections WHERE id = $1', [id])
     if (!rows.length) return null
-    const rooms = await loadRoomsWithFiles(id)
-    return rowToInspection(rows[0], rooms)
+    const [rooms, clientFiles] = await Promise.all([loadRoomsWithFiles(id), loadClientFormFiles(id)])
+    const inspection = rowToInspection(rows[0], rooms)
+    inspection.clientForm.files = clientFiles
+    return inspection
   }
 
   const getInspectionByPublicId = async (publicId) => {
     const { rows } = await pool.query('SELECT * FROM inspections WHERE public_id = $1', [publicId])
     if (!rows.length) return null
-    const rooms = await loadRoomsWithFiles(rows[0].id)
-    return rowToInspection(rows[0], rooms)
+    const id = rows[0].id
+    const [rooms, clientFiles] = await Promise.all([loadRoomsWithFiles(id), loadClientFormFiles(id)])
+    const inspection = rowToInspection(rows[0], rooms)
+    inspection.clientForm.files = clientFiles
+    return inspection
   }
 
   const updateInspectionDetails = async (id, patch = {}) => {
@@ -199,17 +226,9 @@ function createDbStore(connectionString) {
     if (!rows.length) return null
 
     const current = rows[0]
-    const currentClientForm = ensureFilesArray(current.client_form || {})
-
-    const mergedQuestionnaire = {
-      ...(currentClientForm.questionnaire || {}),
-      ...(patch.questionnaire || {}),
-    }
-
+    const currentQuestionnaire = (current.client_form || {}).questionnaire || {}
     const updatedClientForm = {
-      ...currentClientForm,
-      questionnaire: normalizeQuestionnaire(mergedQuestionnaire),
-      files: currentClientForm.files,
+      questionnaire: normalizeQuestionnaire({ ...currentQuestionnaire, ...(patch.questionnaire || {}) }),
       submittedAt: nowIso(),
     }
 
@@ -225,30 +244,17 @@ function createDbStore(connectionString) {
     const { rows } = await pool.query('SELECT * FROM inspections WHERE public_id = $1', [publicId])
     if (!rows.length) return null
 
-    const current = rows[0]
-    const currentClientForm = ensureFilesArray(current.client_form || {})
+    const inspectionId = rows[0].id
     const timestamp = nowIso()
-    const preparedFiles = files.map((file) => ({
-      id: randomUUID(),
-      name: file.originalname,
-      mimeType: file.mimetype,
-      size: file.size,
-      uploadedAt: timestamp,
-      contentBase64: file.buffer.toString('base64'),
-    }))
 
-    const updatedClientForm = {
-      ...currentClientForm,
-      questionnaire: normalizeQuestionnaire(currentClientForm.questionnaire || {}),
-      files: [...currentClientForm.files, ...preparedFiles],
-      submittedAt: timestamp,
+    for (const file of files) {
+      await pool.query(
+        'INSERT INTO files (id, inspection_id, room_id, category, name, mime_type, size, uploaded_at, content_base64) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+        [randomUUID(), inspectionId, null, 'client_form', file.originalname, file.mimetype, file.size, timestamp, file.buffer.toString('base64')],
+      )
     }
 
-    await pool.query(
-      'UPDATE inspections SET client_form = $2, updated_at = $3 WHERE public_id = $1',
-      [publicId, JSON.stringify(updatedClientForm), timestamp],
-    )
-
+    await pool.query('UPDATE inspections SET updated_at = $2 WHERE id = $1', [inspectionId, timestamp])
     return getInspectionByPublicId(publicId)
   }
 
@@ -323,8 +329,8 @@ function createDbStore(connectionString) {
     const contentBase64 = file.buffer.toString('base64')
 
     await pool.query(
-      'INSERT INTO files (id, room_id, name, mime_type, size, uploaded_at, content_base64) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [id, roomId, file.originalname, file.mimetype, file.size, uploadedAt, contentBase64],
+      'INSERT INTO files (id, inspection_id, room_id, category, name, mime_type, size, uploaded_at, content_base64) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+      [id, inspectionId, roomId, 'room', file.originalname, file.mimetype, file.size, uploadedAt, contentBase64],
     )
 
     await pool.query('UPDATE inspections SET updated_at = $2 WHERE id = $1', [inspectionId, nowIso()])
@@ -357,6 +363,7 @@ function createDbStore(connectionString) {
     listInspections,
     getInspection,
     getInspectionByPublicId,
+    getFile,
     updateInspectionDetails,
     updateClientFormByPublicId,
     addClientFormFilesByPublicId,

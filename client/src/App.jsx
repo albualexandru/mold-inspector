@@ -167,31 +167,25 @@ function PublicFormPage() {
   const [address, setAddress] = useState('')
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [status, setStatus] = useState('')
-  const [formLoaded, setFormLoaded] = useState(false)
-  const lastSavedFormRef = useRef(JSON.stringify(emptyQuestionnaire))
+  const [saving, setSaving] = useState(false)
 
-  const saveForm = useCallback(
-    async (nextForm, options = {}) => {
-      const { showSuccess = false } = options
-      setStatus(showSuccess ? 'Saving form...' : 'Auto-saving form...')
+  const saveForm = async (nextForm) => {
+    setSaving(true)
+    setStatus('')
 
-      const response = await fetch(`/api/public/${publicId}/form`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionnaire: mapFormToQuestionnaire(nextForm) }),
-      })
+    const response = await fetch(`/api/public/${publicId}/form`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionnaire: mapFormToQuestionnaire(nextForm) }),
+    })
 
-      if (!response.ok) {
-        setStatus('Failed to save form.')
-        return false
-      }
-
-      lastSavedFormRef.current = JSON.stringify(nextForm)
-      setStatus(showSuccess ? 'Form saved.' : 'Form auto-saved.')
-      return true
-    },
-    [publicId],
-  )
+    setSaving(false)
+    if (!response.ok) {
+      setStatus('Failed to save form.')
+      return
+    }
+    setStatus('Form saved.')
+  }
 
   useEffect(() => {
     fetch(`/api/public/${publicId}/form`)
@@ -202,26 +196,15 @@ function PublicFormPage() {
         setAddress(payload.address || '')
         setForm(mappedForm)
         setUploadedFiles(readClientFormFiles(clientForm))
-        lastSavedFormRef.current = JSON.stringify(mappedForm)
-        setFormLoaded(true)
       })
       .catch(() => setStatus('Could not load form.'))
   }, [publicId])
-
-  // Auto-save disabled
-  // useEffect(() => {
-  //   if (!formLoaded) return
-  //   const serialized = JSON.stringify(form)
-  //   if (serialized === lastSavedFormRef.current) return
-  //   const timer = setTimeout(() => { void saveForm(form) }, 700)
-  //   return () => clearTimeout(timer)
-  // }, [form, formLoaded, saveForm])
 
   const updateField = (key, value) => setForm((previous) => ({ ...previous, [key]: value }))
 
   const onSubmit = async (event) => {
     event.preventDefault()
-    await saveForm(form, { showSuccess: true })
+    await saveForm(form)
   }
 
   const uploadFiles = async (event) => {
@@ -433,7 +416,7 @@ function PublicFormPage() {
             {uploadedFiles.map((file) => (
               <div key={file.id} className="file-item">
                 <img
-                  src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                  src={file.url}
                   alt={file.name}
                   className="file-preview-image"
                 />
@@ -442,7 +425,7 @@ function PublicFormPage() {
             ))}
           </div>
         )}
-        <button type="submit">Save</button>
+        <button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
           </form>
         </div>
         {status ? <div className="status-toast">{status}</div> : null}
@@ -464,8 +447,8 @@ function PrivateDashboard() {
   const [newRoomNotes, setNewRoomNotes] = useState('')
   const [roomNotesDrafts, setRoomNotesDrafts] = useState({})
   const [status, setStatus] = useState('')
-
-  const lastSavedDetailsRef = useRef(JSON.stringify(emptyDetails))
+  const [savingDetails, setSavingDetails] = useState(false)
+  const [savingRoomId, setSavingRoomId] = useState(null)
 
   const authorizedFetch = useCallback(
     (url, options = {}, authToken = token) =>
@@ -499,9 +482,10 @@ function PrivateDashboard() {
   )
 
   const saveDetailsDraft = useCallback(
-    async (nextDetails, options = {}) => {
-      const { showSuccess = false } = options
-      if (!selectedInspection) return false
+    async (nextDetails) => {
+      if (!selectedInspection) return
+      setSavingDetails(true)
+      setStatus('')
 
       const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/details`, {
         method: 'PUT',
@@ -509,31 +493,19 @@ function PrivateDashboard() {
         body: JSON.stringify(nextDetails),
       })
 
+      setSavingDetails(false)
       if (!response.ok) {
         setStatus('Failed to save inspection details.')
-        return false
+        return
       }
-
-      lastSavedDetailsRef.current = JSON.stringify(nextDetails)
-      setStatus(showSuccess ? 'Inspection details saved.' : 'Inspection details auto-saved.')
-      // Update local state directly — no server read needed.
       setSelectedInspection((prev) => (prev ? { ...prev, details: nextDetails } : prev))
       setInspections((prev) =>
         prev.map((i) => (i.id === selectedInspection.id ? { ...i, details: nextDetails } : i)),
       )
-      return true
+      setStatus('Details saved.')
     },
     [authorizedFetch, selectedInspection],
   )
-
-  // Auto-save disabled
-  // useEffect(() => {
-  //   if (!selectedInspection) return
-  //   const serialized = JSON.stringify(detailsDraft)
-  //   if (serialized === lastSavedDetailsRef.current) return
-  //   const timer = setTimeout(() => { void saveDetailsDraft(detailsDraft) }, 700)
-  //   return () => clearTimeout(timer)
-  // }, [detailsDraft, saveDetailsDraft, selectedInspection])
 
   const login = async (event) => {
     event.preventDefault()
@@ -583,7 +555,7 @@ function PrivateDashboard() {
 
   const saveDetails = async (event) => {
     event.preventDefault()
-    await saveDetailsDraft(detailsDraft, { showSuccess: true })
+    await saveDetailsDraft(detailsDraft)
   }
 
   const addRoom = async (event) => {
@@ -613,6 +585,8 @@ function PrivateDashboard() {
 
   const saveRoomNotes = async (roomId) => {
     if (!selectedInspection) return
+    setSavingRoomId(roomId)
+    setStatus('')
 
     const response = await authorizedFetch(`/api/inspections/${selectedInspection.id}/rooms/${roomId}`, {
       method: 'PUT',
@@ -620,6 +594,7 @@ function PrivateDashboard() {
       body: JSON.stringify({ notes: roomNotesDrafts[roomId] || '' }),
     })
 
+    setSavingRoomId(null)
     if (!response.ok) {
       setStatus('Failed to save room notes.')
       return
@@ -846,7 +821,9 @@ function PrivateDashboard() {
                     />
                   </label>
                   <div>
-                    <button type="submit">Save details</button>
+                    <button type="submit" disabled={savingDetails}>
+                      {savingDetails ? 'Saving…' : 'Save details'}
+                    </button>
                   </div>
                 </form>
 
@@ -872,7 +849,7 @@ function PrivateDashboard() {
                     {clientUploadedImages.map((file) => (
                       <div key={file.id} className="file-item">
                         <img
-                          src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                          src={file.url}
                           alt={file.name}
                           className="file-preview-image"
                         />
@@ -931,8 +908,12 @@ function PrivateDashboard() {
                         />
                       </label>
                       <div>
-                        <button type="button" onClick={() => saveRoomNotes(room.id)}>
-                          Save room notes
+                        <button
+                          type="button"
+                          onClick={() => saveRoomNotes(room.id)}
+                          disabled={savingRoomId === room.id}
+                        >
+                          {savingRoomId === room.id ? 'Saving…' : 'Save room notes'}
                         </button>
                       </div>
                       {room.files.length > 0 && (
@@ -941,13 +922,13 @@ function PrivateDashboard() {
                             <div key={file.id} className="file-item">
                               {file.mimeType && file.mimeType.startsWith('image/') ? (
                                 <img
-                                  src={`data:${file.mimeType};base64,${file.contentBase64}`}
+                                  src={file.url}
                                   alt={file.name}
                                   className="file-preview-image"
                                 />
                               ) : (
                                 <a
-                                  href={`data:${file.mimeType || 'application/octet-stream'};base64,${file.contentBase64}`}
+                                  href={file.url}
                                   download={file.name}
                                   className="file-download-link"
                                 >

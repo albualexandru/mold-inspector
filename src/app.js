@@ -30,17 +30,17 @@ const questionnaireUpload = multer({
 const buildFileHtml = (file) => {
   const name = escapeHtml(file.name || '')
   const mimeType = file.mimeType || 'application/octet-stream'
-  const source = `data:${mimeType};base64,${file.contentBase64 || ''}`
+  const url = `/api/files/${file.id}`
 
   if (mimeType.startsWith('image/')) {
     return `<figure class="file-item">
-      <img src="${source}" alt="${name}" />
+      <img src="${url}" alt="${name}" />
       <figcaption>${name}</figcaption>
     </figure>`
   }
 
   return `<div class="file-item">
-    <a href="${source}" download="${name}">${name}</a>
+    <a href="${url}" download="${name}">${name}</a>
   </div>`
 }
 
@@ -244,6 +244,19 @@ function createApp(options = {}) {
       return res.status(201).json({ clientForm: inspection.clientForm })
     },
   )
+
+  app.get('/api/files/:fileId', pageLimiter, async (req, res) => {
+    const file = await store.getFile(req.params.fileId)
+    if (!file) return res.status(404).json({ error: 'File not found' })
+
+    const buffer = Buffer.from(file.contentBase64, 'base64')
+    const disposition = (file.mimeType || '').startsWith('image/') ? 'inline' : 'attachment'
+    res.set('Content-Type', file.mimeType || 'application/octet-stream')
+    res.set('Content-Disposition', `${disposition}; filename="${file.name}"`)
+    res.set('Content-Length', buffer.length)
+    res.set('Cache-Control', 'public, max-age=31536000, immutable')
+    return res.send(buffer)
+  })
 
   app.use('/api/inspections', requireAuth)
 
