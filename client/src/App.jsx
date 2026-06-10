@@ -208,18 +208,14 @@ function PublicFormPage() {
       .catch(() => setStatus('Could not load form.'))
   }, [publicId])
 
-  useEffect(() => {
-    if (!formLoaded) return
-
-    const serialized = JSON.stringify(form)
-    if (serialized === lastSavedFormRef.current) return
-
-    const timer = setTimeout(() => {
-      void saveForm(form)
-    }, 700)
-
-    return () => clearTimeout(timer)
-  }, [form, formLoaded, saveForm])
+  // Auto-save disabled
+  // useEffect(() => {
+  //   if (!formLoaded) return
+  //   const serialized = JSON.stringify(form)
+  //   if (serialized === lastSavedFormRef.current) return
+  //   const timer = setTimeout(() => { void saveForm(form) }, 700)
+  //   return () => clearTimeout(timer)
+  // }, [form, formLoaded, saveForm])
 
   const updateField = (key, value) => setForm((previous) => ({ ...previous, [key]: value }))
 
@@ -492,36 +488,14 @@ function PrivateDashboard() {
     )
   }, [])
 
-  // Updates server-side inspection data (rooms, etc.) without resetting in-progress draft fields.
-  // Used by background refreshes and auto-save callbacks so typing is never interrupted.
-  const updateInspectionData = useCallback((inspection) => {
-    setSelectedInspection(inspection)
-    // Only add draft entries for rooms that don't already have one; preserve existing edits.
-    setRoomNotesDrafts((prev) => {
-      const next = { ...prev }
-      for (const room of (inspection.rooms || [])) {
-        if (!(room.id in next)) next[room.id] = room.notes || ''
-      }
-      return next
-    })
-  }, [])
-
   const refreshInspections = useCallback(
     async (authToken = token) => {
       const response = await authorizedFetch('/api/inspections', {}, authToken)
       if (!response.ok) return
-
       const payload = await response.json()
       setInspections(payload.inspections)
-
-      if (selectedInspection) {
-        const updatedSelected = payload.inspections.find((inspection) => inspection.id === selectedInspection.id)
-        if (updatedSelected) {
-          updateInspectionData(updatedSelected)
-        }
-      }
     },
-    [authorizedFetch, selectedInspection, updateInspectionData, token],
+    [authorizedFetch, token],
   )
 
   const saveDetailsDraft = useCallback(
@@ -540,29 +514,26 @@ function PrivateDashboard() {
         return false
       }
 
-      // Don't update detailsDraft from the server response — the user is the source of
-      // truth for the form while they're editing. Just advance the saved-state cursor.
       lastSavedDetailsRef.current = JSON.stringify(nextDetails)
       setStatus(showSuccess ? 'Inspection details saved.' : 'Inspection details auto-saved.')
-      // Refresh the sidebar address without resetting any draft fields.
-      await refreshInspections()
+      // Update local state directly — no server read needed.
+      setSelectedInspection((prev) => (prev ? { ...prev, details: nextDetails } : prev))
+      setInspections((prev) =>
+        prev.map((i) => (i.id === selectedInspection.id ? { ...i, details: nextDetails } : i)),
+      )
       return true
     },
-    [authorizedFetch, refreshInspections, selectedInspection],
+    [authorizedFetch, selectedInspection],
   )
 
-  useEffect(() => {
-    if (!selectedInspection) return
-
-    const serialized = JSON.stringify(detailsDraft)
-    if (serialized === lastSavedDetailsRef.current) return
-
-    const timer = setTimeout(() => {
-      void saveDetailsDraft(detailsDraft)
-    }, 700)
-
-    return () => clearTimeout(timer)
-  }, [detailsDraft, saveDetailsDraft, selectedInspection])
+  // Auto-save disabled
+  // useEffect(() => {
+  //   if (!selectedInspection) return
+  //   const serialized = JSON.stringify(detailsDraft)
+  //   if (serialized === lastSavedDetailsRef.current) return
+  //   const timer = setTimeout(() => { void saveDetailsDraft(detailsDraft) }, 700)
+  //   return () => clearTimeout(timer)
+  // }, [detailsDraft, saveDetailsDraft, selectedInspection])
 
   const login = async (event) => {
     event.preventDefault()
@@ -596,7 +567,7 @@ function PrivateDashboard() {
     const payload = await response.json()
     syncSelectedInspection(payload.inspection)
     setStatus('Inspection created.')
-    await refreshInspections()
+    setInspections((prev) => [payload.inspection, ...prev])
   }
 
   const selectInspection = useCallback(
@@ -627,11 +598,17 @@ function PrivateDashboard() {
 
     if (!response.ok) return
 
+    const { room: newRoom } = await response.json()
     setNewRoomName('')
     setNewRoomNotes('')
+    setRoomNotesDrafts((prev) => ({ ...prev, [newRoom.id]: newRoom.notes || '' }))
+    setSelectedInspection((prev) => (prev ? { ...prev, rooms: [...prev.rooms, newRoom] } : prev))
+    setInspections((prev) =>
+      prev.map((i) =>
+        i.id === selectedInspection.id ? { ...i, rooms: [...i.rooms, newRoom] } : i,
+      ),
+    )
     setStatus('Room added.')
-    await selectInspection(selectedInspection.id)
-    await refreshInspections()
   }
 
   const saveRoomNotes = async (roomId) => {
@@ -648,9 +625,18 @@ function PrivateDashboard() {
       return
     }
 
+    const notes = roomNotesDrafts[roomId] || ''
+    setSelectedInspection((prev) =>
+      prev ? { ...prev, rooms: prev.rooms.map((r) => (r.id === roomId ? { ...r, notes } : r)) } : prev,
+    )
+    setInspections((prev) =>
+      prev.map((i) =>
+        i.id === selectedInspection.id
+          ? { ...i, rooms: i.rooms.map((r) => (r.id === roomId ? { ...r, notes } : r)) }
+          : i,
+      ),
+    )
     setStatus('Room notes saved.')
-    await selectInspection(selectedInspection.id)
-    await refreshInspections()
   }
 
   const uploadRoomFile = async (roomId, file) => {
@@ -666,8 +652,18 @@ function PrivateDashboard() {
 
     if (!response.ok) return
 
+    const { file: newFile } = await response.json()
+    setSelectedInspection((prev) =>
+      prev
+        ? {
+            ...prev,
+            rooms: prev.rooms.map((r) =>
+              r.id === roomId ? { ...r, files: [...r.files, newFile] } : r,
+            ),
+          }
+        : prev,
+    )
     setStatus('File uploaded.')
-    await selectInspection(selectedInspection.id)
   }
 
   const deleteInspection = async (inspectionId) => {
@@ -682,7 +678,7 @@ function PrivateDashboard() {
       setDetailsDraft(emptyDetails)
     }
     setStatus('Inspection deleted.')
-    await refreshInspections()
+    setInspections((prev) => prev.filter((i) => i.id !== inspectionId))
   }
 
   const deleteRoom = async (roomId) => {
@@ -698,8 +694,16 @@ function PrivateDashboard() {
     }
 
     setStatus('Room deleted.')
-    await selectInspection(selectedInspection.id)
-    await refreshInspections()
+    setSelectedInspection((prev) =>
+      prev ? { ...prev, rooms: prev.rooms.filter((r) => r.id !== roomId) } : prev,
+    )
+    setInspections((prev) =>
+      prev.map((i) =>
+        i.id === selectedInspection.id
+          ? { ...i, rooms: i.rooms.filter((r) => r.id !== roomId) }
+          : i,
+      ),
+    )
   }
 
   const clientResponseEntries = useMemo(() => {
